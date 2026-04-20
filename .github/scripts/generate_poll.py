@@ -8,7 +8,7 @@ import sys
 def create_poll_request(repo_id, cat_id, title, options, token):
     """
     Sends the GraphQL mutation using the IDL Accept header.
-    This mimics the internal GitHub web environment to force 'poll' visibility.
+    Mimics the internal GitHub web environment to force 'poll' visibility.
     """
     mutation = """
     mutation CreatePoll($input: CreateDiscussionInput!) {
@@ -20,7 +20,6 @@ def create_poll_request(repo_id, cat_id, title, options, token):
     }
     """
     
-    # These headers are the "Golden Ticket" for preview features
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -57,9 +56,7 @@ def clean_titles(titles):
     """Trims and sanitizes titles for GitHub's character limits."""
     cleaned = []
     for t in titles:
-        # Strip fancy quotes and emojis that can cause encoding rejection
         t = str(t).replace('“', '').replace('”', '').replace('—', '-').replace('"', "'").replace('…', '...')
-        # Limit to 80 characters for safety
         if len(t) > 80:
             t = t[:77] + "..."
         cleaned.append(t.strip())
@@ -76,7 +73,7 @@ def create_poll():
     latest_file = max(files, key=os.path.getmtime)
     print(f"Processing: {latest_file}")
 
-    # 2. Parse CSV and filter by TYPE
+    # 2. Parse CSV
     df = pd.read_csv(latest_file)
     df.columns = df.columns.str.strip().str.upper()
     
@@ -89,4 +86,38 @@ def create_poll():
     v_rows = df[df['TYPE'] == 'V']['TITLE'].dropna().tolist()
 
     # 3. Environment Setup
-    token = os.
+    token = os.getenv("GH_TOKEN")
+    owner = os.getenv("REPO_OWNER")
+    repo_name = os.getenv("REPO_NAME")
+    
+    # Fetch IDs
+    query_ids = """
+    query($owner: String!, $name: String!) {
+      repository(owner: $owner, name: $name) {
+        id
+        discussionCategories(first: 20) {
+          nodes { id name }
+        }
+      }
+    }
+    """
+    id_resp = requests.post(
+        "https://api.github.com/graphql", 
+        json={"query": query_ids, "variables": {"owner": owner, "name": repo_name}}, 
+        headers={"Authorization": f"Bearer {token}"}
+    ).json()
+
+    try:
+        repo_id = id_resp['data']['repository']['id']
+        categories = id_resp['data']['repository']['discussionCategories']['nodes']
+        cat_id = next(c['id'] for c in categories if c['name'].lower() == 'polls')
+        print(f"Verified Repo ID: {repo_id} | Category ID: {cat_id}")
+    except (KeyError, StopIteration, TypeError):
+        print(f"Critical Error: Could not resolve IDs. Response: {id_resp}")
+        sys.exit(1)
+
+    # 4. Video (V) Poll
+    if v_rows:
+        v_cleaned = clean_titles(v_rows[:8])
+        print("Creating Video Poll...")
+        res_v = create_poll_request(repo_id, cat_id, f"Video Poll: {os.path.basename(latest_file)}", v_cleaned, token
