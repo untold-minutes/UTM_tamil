@@ -1,1 +1,39 @@
 
+name: Weekly Poll Automation
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  generate-poll:
+    # Only runs if someone comments exactly "/poll" on a Pull Request
+    if: github.event.comment.body == '/poll' && github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    
+    # Permissions required to read the CSV and create the Discussion Poll
+    permissions:
+      contents: read
+      discussions: write
+      pull-requests: read
+      issue-comment: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Dependencies
+        run: pip install pandas requests
+
+      - name: Run Poll Script
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        # This points to the location of your python script
+        run: python .github/scripts/generate_poll.py
