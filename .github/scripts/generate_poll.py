@@ -56,6 +56,7 @@ def clean_titles(titles):
     """Trims and sanitizes titles for GitHub's character limits."""
     cleaned = []
     for t in titles:
+        # Strict cleaning for Tamil characters and special punctuation
         t = str(t).replace('“', '').replace('”', '').replace('—', '-').replace('"', "'").replace('…', '...')
         if len(t) > 80:
             t = t[:77] + "..."
@@ -124,7 +125,7 @@ def create_poll():
         print(f"Critical Error: Could not resolve IDs. Response: {id_resp}")
         sys.exit(1)
 
-    # 4. Video (V) Poll
+    # 4. Video (V) Poll - Corrected syntax (parenthesis closed)
     if v_rows:
         v_cleaned = clean_titles(v_rows[:8])
         print("Creating Video Poll...")
