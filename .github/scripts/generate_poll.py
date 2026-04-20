@@ -12,10 +12,12 @@ def create_poll_request(repo_id, cat_id, title, options, base_headers):
       }
     }
     """
+    
     request_headers = base_headers.copy()
+    # Updated headers to be extremely specific for the Polls Preview
     request_headers.update({
         "GraphQL-Features": "discussions_polls",
-        "Accept": "application/vnd.github.v4.idl"
+        "Accept": "application/vnd.github.v4.idl, application/vnd.github.merge-info-preview+json"
     })
 
     variables = {
@@ -23,7 +25,7 @@ def create_poll_request(repo_id, cat_id, title, options, base_headers):
             "repositoryId": repo_id,
             "categoryId": cat_id,
             "title": title,
-            "body": "Automatically generated poll for Untold Minutes Tamil.",
+            "body": "Automated poll for Untold Minutes Tamil. Please vote for the next topic!",
             "poll": {
                 "question": "Which topic should we cover next?",
                 "options": options
@@ -31,14 +33,18 @@ def create_poll_request(repo_id, cat_id, title, options, base_headers):
         }
     }
     
-    response = requests.post("https://api.github.com/graphql", json={"query": mutation, "variables": variables}, headers=request_headers)
+    response = requests.post(
+        "https://api.github.com/graphql", 
+        json={"query": mutation, "variables": variables}, 
+        headers=request_headers
+    )
     return response.json()
 
 def clean_titles(titles):
-    """Trims titles to 80 chars and removes fancy quotes to avoid API errors."""
     cleaned = []
     for t in titles:
-        t = str(t).replace('“', '').replace('”', '').replace('—', '-')
+        # Removing complex Tamil punctuation that can sometimes interfere with JSON strings
+        t = str(t).replace('“', '').replace('”', '').replace('—', '-').replace('"', "'")
         if len(t) > 80:
             t = t[:77] + "..."
         cleaned.append(t.strip())
@@ -48,26 +54,31 @@ def create_poll():
     path = "src/01_Planning/*.csv"
     files = glob.glob(path)
     if not files:
+        print("No CSV files found.")
         sys.exit(1)
     
     latest_file = max(files, key=os.path.getmtime)
     print(f"Processing: {latest_file}")
 
-    # 1. Parse CSV
     df = pd.read_csv(latest_file)
     df.columns = df.columns.str.strip().str.upper()
     
-    # 2. Filter by TYPE (Case-insensitive)
+    # Filtering Logic
+    if 'TYPE' not in df.columns or 'TITLE' not in df.columns:
+        print("Error: CSV must have TYPE and TITLE columns.")
+        sys.exit(1)
+
     df['TYPE'] = df['TYPE'].str.strip().str.upper()
     s_rows = df[df['TYPE'] == 'S']['TITLE'].dropna().tolist()
     v_rows = df[df['TYPE'] == 'V']['TITLE'].dropna().tolist()
 
-    # 3. Setup API
+    # API Setup
     token = os.getenv("GH_TOKEN")
     base_headers = {"Authorization": f"Bearer {token}"}
     owner = os.getenv("REPO_OWNER")
     repo_name = os.getenv("REPO_NAME")
 
+    # Fetch IDs
     query_ids = """
     query($owner: String!, $name: String!) {
       repository(owner: $owner, name: $name) {
@@ -78,25 +89,34 @@ def create_poll():
     """
     id_resp = requests.post("https://api.github.com/graphql", json={"query": query_ids, "variables": {"owner": owner, "name": repo_name}}, headers=base_headers).json()
     
-    repo_id = id_resp['data']['repository']['id']
-    cat_id = next(c['id'] for c in id_resp['data']['repository']['discussionCategories']['nodes'] if c['name'].lower() == 'polls')
+    try:
+        repo_id = id_resp['data']['repository']['id']
+        cat_id = next(c['id'] for c in id_resp['data']['repository']['discussionCategories']['nodes'] if c['name'].lower() == 'polls')
+    except (KeyError, StopIteration):
+        print("Could not find 'Polls' category ID.")
+        sys.exit(1)
 
-    # 4. Process TYPE 'V' (Video) - Max 8
+    # Process V (Video)
     if v_rows:
         v_cleaned = clean_titles(v_rows[:8])
-        print(f"Creating Video Poll (Type V)...")
+        print(f"Creating Video Poll...")
         res = create_poll_request(repo_id, cat_id, f"Video Poll: {os.path.basename(latest_file)}", v_cleaned, base_headers)
-        print(f"V Poll Result: {res.get('data', res.get('errors'))}")
+        if 'errors' in res:
+            print(f"V Poll Failed: {res['errors']}")
+        else:
+            print(f"V Poll Success: {res['data']['createDiscussion']['discussion']['url']}")
 
-    # 5. Process TYPE 'S' (Stories) - Multiple Polls if needed
+    # Process S (Stories) - Multiple Polls
     s_cleaned = clean_titles(s_rows)
-    # Split list into chunks of 8
     for i in range(0, len(s_cleaned), 8):
         chunk = s_cleaned[i:i + 8]
         poll_num = (i // 8) + 1
-        print(f"Creating Story Poll {poll_num} (Type S)...")
-        res = create_poll_request(repo_id, cat_id, f"Story Poll Part {poll_num}: {os.path.basename(latest_file)}", chunk, base_headers)
-        print(f"S Poll {poll_num} Result: {res.get('data', res.get('errors'))}")
+        print(f"Creating Story Poll {poll_num}...")
+        res = create_poll_request(repo_id, cat_id, f"Story Poll {poll_num}: {os.path.basename(latest_file)}", chunk, base_headers)
+        if 'errors' in res:
+            print(f"S Poll {poll_num} Failed: {res['errors']}")
+        else:
+            print(f"S Poll {poll_num} Success: {res['data']['createDiscussion']['discussion']['url']}")
 
 if __name__ == "__main__":
     create_poll()
