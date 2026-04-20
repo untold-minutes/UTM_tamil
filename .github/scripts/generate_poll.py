@@ -4,26 +4,35 @@ import pandas as pd
 import requests
 
 def create_poll():
-    # 1. Dynamically find the newest CSV in the planning folder
+    # 1. Find the newest CSV in the planning folder
     path = "src/01_Planning/*.csv"
     files = glob.glob(path)
     if not files:
-        print("No CSV files found in src/01_Planning/")
+        print("Error: No CSV files found in src/01_Planning/")
         return
     
+    # Sort by filename or creation time to get the latest week
     latest_file = max(files, key=os.path.getctime)
-    print(f"Reading content from: {latest_file}")
+    print(f"Targeting File: {latest_file}")
 
-    # 2. Parse CSV
-    df = pd.read_csv(latest_file)
-    options = df['one_liner'].tolist()[:8]
+    # 2. Parse CSV using your headers: ID, TYPE, TITLE, DESCRIPTION
+    try:
+        df = pd.read_csv(latest_file)
+        # We use the 'TITLE' column for the poll options
+        options = df['TITLE'].dropna().astype(str).tolist()[:8] 
+        
+        if not options:
+            print("Error: TITLE column is empty.")
+            return
+    except Exception as e:
+        print(f"Error reading CSV: {e}")
+        return
 
-    # 3. Setup GraphQL (Replace these with your actual IDs or fetch them via API)
-    # Pro-tip: You can fetch REPO_ID dynamically too
+    # 3. Setup GraphQL Connection
     token = os.getenv("GH_TOKEN")
     headers = {"Authorization": f"Bearer {token}"}
     
-    # Example Query to get REPO_ID and CATEGORY_ID
+    # Fetch Repository and Category IDs
     info_query = """
     query($owner: String!, $name: String!) {
       repository(owner: $owner, name: $name) {
@@ -35,19 +44,27 @@ def create_poll():
     }
     """
     vars = {"owner": os.getenv("REPO_OWNER"), "name": os.getenv("REPO_NAME")}
-    repo_info = requests.post("https://api.github.com/graphql", json={"query": info_query, "variables": vars}, headers=headers).json()
     
-    repo_id = repo_info['data']['repository']['id']
-    # Find the ID for the category named 'Polls'
-    cat_id = next(c['id'] for c in repo_info['data']['repository']['discussionCategories']['nodes'] if c['name'] == 'Polls')
+    try:
+        repo_info = requests.post("https://api.github.com/graphql", json={"query": info_query, "variables": vars}, headers=headers).json()
+        repo_id = repo_info['data']['repository']['id']
+        
+        # Look for the 'Polls' category ID
+        categories = repo_info['data']['repository']['discussionCategories']['nodes']
+        cat_id = next(c['id'] for c in categories if c['name'] == 'Polls')
+    except (KeyError, StopIteration):
+        print("Error: Could not find Repository ID or 'Polls' category. Ensure Discussions are enabled.")
+        return
 
-    # 4. Create the Poll
+    # 4. Create the Discussion Poll
     poll_mutation = """
-    mutation($repoId: ID!, $catId: ID!, $title: String!, $options: [String!]!) {
+    mutation($repoId: ID!, $catId: ID!, $title: String!, $body: String!, $options: [String!]!) {
       createDiscussion(input: {
-        repositoryId: $repoId, categoryId: $catId,
-        title: $title, body: "Vote for this week's content!",
-        poll: { question: "Which topic should we cover?", options: $options }
+        repositoryId: $repoId, 
+        categoryId: $catId,
+        title: $title, 
+        body: $body,
+        poll: { question: "Which content should we produce?", options: $options }
       }) { discussion { url } }
     }
     """
@@ -55,12 +72,13 @@ def create_poll():
     poll_vars = {
         "repoId": repo_id,
         "catId": cat_id,
-        "title": f"Content Poll: {os.path.basename(latest_file)}",
+        "title": f"Content Selection: {os.path.basename(latest_file)}",
+        "body": "Please vote for the next video topic based on the planning document.",
         "options": options
     }
     
     result = requests.post("https://api.github.com/graphql", json={"query": poll_mutation, "variables": poll_vars}, headers=headers)
-    print(f"Poll created: {result.json()}")
+    print(f"Success! Poll created at: {result.json()['data']['createDiscussion']['discussion']['url']}")
 
 if _name_ == "_main_":
     create_poll()
