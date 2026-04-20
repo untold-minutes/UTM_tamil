@@ -80,5 +80,5 @@ def create_poll():
     result = requests.post("https://api.github.com/graphql", json={"query": poll_mutation, "variables": poll_vars}, headers=headers)
     print(f"Success! Poll created at: {result.json()['data']['createDiscussion']['discussion']['url']}")
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     create_poll()
