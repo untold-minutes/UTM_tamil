@@ -16,7 +16,7 @@ jobs:
       contents: read
       discussions: write
       pull-requests: read
-      issue-comment: read
+      issues: read
 
     steps:
       - name: Checkout Repository
