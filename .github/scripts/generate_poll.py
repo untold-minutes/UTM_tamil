@@ -4,10 +4,9 @@ import pandas as pd
 import requests
 import sys
 
-def create_poll_request(repo_id, cat_id, title, options, headers):
+def create_poll_request(repo_id, cat_id, title, options, base_headers):
     """
-    Sends the GraphQL mutation to GitHub. 
-    The 'poll' object must be nested inside the 'input' object.
+    Sends the GraphQL mutation with the required Beta header for Polls.
     """
     mutation = """
     mutation($repoId: ID!, $catId: ID!, $title: String!, $options: [String!]!) {
@@ -27,6 +26,13 @@ def create_poll_request(repo_id, cat_id, title, options, headers):
       }
     }
     """
+    
+    # Critical: The 'discussions_polls' feature must be enabled via header
+    request_headers = base_headers.copy()
+    request_headers.update({
+        "GraphQL-Features": "discussions_polls"
+    })
+
     variables = {
         "repoId": repo_id,
         "catId": cat_id,
@@ -37,7 +43,7 @@ def create_poll_request(repo_id, cat_id, title, options, headers):
     response = requests.post(
         "https://api.github.com/graphql", 
         json={"query": mutation, "variables": variables}, 
-        headers=headers
+        headers=request_headers
     )
     return response.json()
 
@@ -65,7 +71,7 @@ def create_poll():
         
         # Split into two lists (Max 8 per poll)
         poll1_options = all_titles[:8]
-        poll2_options = all_titles[8:16] # Handles items 9 through 16
+        poll2_options = all_titles[8:16] 
         
         if not poll1_options:
             print("Error: No titles found in CSV.")
@@ -75,9 +81,9 @@ def create_poll():
         print(f"CSV Read Error: {e}")
         sys.exit(1)
 
-    # 3. Setup API
+    # 3. Setup Base API Headers
     token = os.getenv("GH_TOKEN")
-    headers = {"Authorization": f"Bearer {token}"}
+    base_headers = {"Authorization": f"Bearer {token}"}
     owner = os.getenv("REPO_OWNER")
     repo_name = os.getenv("REPO_NAME")
 
@@ -95,21 +101,21 @@ def create_poll():
     id_resp = requests.post(
         "https://api.github.com/graphql", 
         json={"query": query_ids, "variables": {"owner": owner, "name": repo_name}}, 
-        headers=headers
+        headers=base_headers
     ).json()
 
     try:
         repo_id = id_resp['data']['repository']['id']
         categories = id_resp['data']['repository']['discussionCategories']['nodes']
-        # Find category named 'Polls' (case-insensitive)
+        # Find category named 'Polls'
         cat_id = next(c['id'] for c in categories if c['name'].lower() == 'polls')
-    except (KeyError, StopIteration):
-        print("Error: Could not find 'Polls' category. Check repo settings.")
+    except (KeyError, StopIteration, TypeError):
+        print(f"Error: Could not find 'Polls' category. API Response: {id_resp}")
         sys.exit(1)
 
     # 5. Execute Poll 1
     print(f"Creating Poll 1 with {len(poll1_options)} options...")
-    res1 = create_poll_request(repo_id, cat_id, f"Part 1: {os.path.basename(latest_file)}", poll1_options, headers)
+    res1 = create_poll_request(repo_id, cat_id, f"Part 1: {os.path.basename(latest_file)}", poll1_options, base_headers)
     
     if "errors" in res1:
         print(f"Poll 1 failed: {res1['errors']}")
@@ -119,7 +125,7 @@ def create_poll():
     # 6. Execute Poll 2 (If more than 8 items exist)
     if poll2_options:
         print(f"Creating Poll 2 with {len(poll2_options)} options...")
-        res2 = create_poll_request(repo_id, cat_id, f"Part 2: {os.path.basename(latest_file)}", poll2_options, headers)
+        res2 = create_poll_request(repo_id, cat_id, f"Part 2: {os.path.basename(latest_file)}", poll2_options, base_headers)
         
         if "errors" in res2:
             print(f"Poll 2 failed: {res2['errors']}")
