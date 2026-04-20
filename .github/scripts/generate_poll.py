@@ -5,19 +5,13 @@ import requests
 import sys
 
 def create_poll_request(repo_id, cat_id, title, options, base_headers):
-    # Use a simpler mutation structure to ensure compatibility
+    """
+    Sends the GraphQL mutation using a single input object.
+    This is the most compatible way to trigger GitHub Polls via API.
+    """
     mutation = """
-    mutation CreatePoll($repoId: ID!, $catId: ID!, $title: String!, $body: String!, $options: [String!]!) {
-      createDiscussion(input: {
-        repositoryId: $repoId,
-        categoryId: $catId,
-        title: $title,
-        body: $body,
-        poll: {
-          question: "Which topic should we cover next?",
-          options: $options
-        }
-      }) {
+    mutation CreatePoll($input: CreateDiscussionInput!) {
+      createDiscussion(input: $input) {
         discussion {
           url
         }
@@ -25,79 +19,82 @@ def create_poll_request(repo_id, cat_id, title, options, base_headers):
     }
     """
     
-    headers = base_headers.copy()
-    # The Beta header is strictly required for the 'poll' field to exist in the schema
-    headers["GraphQL-Features"] = "discussions_polls"
+    # We must explicitly use the preview header to unlock the 'poll' field
+    request_headers = base_headers.copy()
+    request_headers.update({
+        "GraphQL-Features": "discussions_polls",
+        "Accept": "application/vnd.github.v4.idl"
+    })
 
+    # Packaging all variables into the 'input' object as required by the schema
     variables = {
-        "repoId": repo_id,
-        "catId": cat_id,
-        "title": title,
-        "body": "Automated poll for upcoming Tamil historical/mythological content.",
-        "options": options
+        "input": {
+            "repositoryId": repo_id,
+            "categoryId": cat_id,
+            "title": title,
+            "body": "New content selection poll! Please vote for the topic you want to see next.",
+            "poll": {
+                "question": "Which topic should we cover?",
+                "options": options
+            }
+        }
     }
     
     response = requests.post(
         "https://api.github.com/graphql", 
         json={"query": mutation, "variables": variables}, 
-        headers=headers
+        headers=request_headers
     )
     return response.json()
 
 def create_poll():
+    # 1. Locate the latest CSV
     path = "src/01_Planning/*.csv"
     files = glob.glob(path)
     if not files:
-        print("Error: No CSV found.")
+        print("Error: No CSV files found in src/01_Planning/")
         sys.exit(1)
     
     latest_file = max(files, key=os.path.getmtime)
-    df = pd.read_csv(latest_file)
-    df.columns = df.columns.str.strip().str.upper()
-    all_titles = df['TITLE'].dropna().astype(str).tolist()
-    
-    poll1 = all_titles[:8]
-    poll2 = all_titles[8:16]
+    print(f"Processing File: {latest_file}")
 
+    # 2. Extract Titles and Split into Two Polls
+    try:
+        df = pd.read_csv(latest_file)
+        df.columns = df.columns.str.strip().str.upper()
+        
+        if 'TITLE' not in df.columns:
+            print(f"Error: Missing TITLE column. Available: {list(df.columns)}")
+            sys.exit(1)
+
+        all_titles = df['TITLE'].dropna().astype(str).tolist()
+        
+        # GitHub max is 8 per poll. 
+        # For 15 items, we split into 8 and 7.
+        poll1_options = all_titles[:8]
+        poll2_options = all_titles[8:16]
+        
+        if not poll1_options:
+            print("Error: The TITLE column in the CSV is empty.")
+            sys.exit(1)
+
+    except Exception as e:
+        print(f"CSV Parse Error: {e}")
+        sys.exit(1)
+
+    # 3. Authorization and Metadata
     token = os.getenv("GH_TOKEN")
+    if not token:
+        print("Error: GH_TOKEN environment variable is missing.")
+        sys.exit(1)
+
     base_headers = {"Authorization": f"Bearer {token}"}
     owner = os.getenv("REPO_OWNER")
     repo_name = os.getenv("REPO_NAME")
 
-    # Get IDs and check category formats
+    # 4. Fetch the Repo and Category IDs
     query_ids = """
     query($owner: String!, $name: String!) {
       repository(owner: $owner, name: $name) {
         id
-        discussionCategories(first: 10) {
-          nodes { id name }
-        }
-      }
-    }
-    """
-    id_resp = requests.post("https://api.github.com/graphql", 
-                            json={"query": query_ids, "variables": {"owner": owner, "name": repo_name}}, 
-                            headers=base_headers).json()
-
-    try:
-        repo_id = id_resp['data']['repository']['id']
-        categories = id_resp['data']['repository']['discussionCategories']['nodes']
-        # Find the category - check if the name matches 'Polls' exactly
-        cat_id = next(c['id'] for c in categories if c['name'].lower() == 'polls')
-        print(f"Found Category 'Polls' with ID: {cat_id}")
-    except (KeyError, StopIteration):
-        print(f"Error: Could not find category 'Polls'. Found: {[c['name'] for c in categories]}")
-        sys.exit(1)
-
-    # Trigger Polls
-    for i, opts in enumerate([poll1, poll2], 1):
-        if opts:
-            print(f"Sending Poll {i}...")
-            result = create_poll_request(repo_id, cat_id, f"Part {i}: {os.path.basename(latest_file)}", opts, base_headers)
-            if "errors" in result:
-                print(f"Poll {i} Failed: {result['errors']}")
-            else:
-                print(f"Poll {i} Success: {result['data']['createDiscussion']['discussion']['url']}")
-
-if __name__ == "__main__":
-    create_poll()
+        discussionCategories(
