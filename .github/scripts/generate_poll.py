@@ -33,7 +33,6 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     """Creates files directly inside the shared folder to bypass quota limits."""
     
     # 1. Create the Google Sheet directly in the folder
-    # This ensures the storage is 'charged' to your personal drive, not the service account.
     sheet_metadata = {
         'name': f"Results - {type_label} - {title}",
         'mimeType': 'application/vnd.google-apps.spreadsheet',
@@ -121,4 +120,17 @@ def main():
         if shorts_titles:
             s_url, s_sheet = create_poll(f_service, s_service, d_service, file_name, shorts_titles, "Shorts")
             summary += f"📱 **Shorts Poll:** [Vote Here]({s_url})\n"
-            summary += f"📈 **Results Sheet:** [View Data](
+            summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{s_sheet})\n\n"
+
+        # Write to the summary file for the GitHub Action to post
+        with open("poll_summary.md", "w", encoding="utf-8") as f:
+            f.write(summary)
+            
+    except Exception as e:
+        # If any error occurs, output it to the summary so you can see it on GitHub
+        with open("poll_summary.md", "w", encoding="utf-8") as f:
+            f.write(f"❌ **Error generating polls:** {str(e)}")
+        print(f"Detailed Error: {e}")
+
+if __name__ == "__main__":
+    main()
