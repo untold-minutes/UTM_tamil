@@ -5,7 +5,7 @@ import requests
 import json
 
 # ENSURE THIS IS YOUR LATEST URL
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzVFc9zt3FsnfObsMPvy9zXCZTWjzDFzoE0W7UwaAEpau-Rd3-dLC4VRqzwwr-bHvVVzw/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxRKjzgG1AhkE2bcPNwyhFezT9ByeU3MBSUCiIyyLVjR4D1IiYa45sdnN3fQgkNqCM2aQ/exec"
 
 def main():
     try:
