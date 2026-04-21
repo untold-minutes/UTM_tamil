@@ -7,28 +7,33 @@ from googleapiclient.discovery import build
 
 # --- CONFIGURATION ---
 FOLDER_ID = "1tYV8MOD4AiCdWIMG_m_DwYjlxcEHOzBZ" 
-# PASTE YOUR TEMPLATE IDS HERE
-SHEET_TEMPLATE_ID = "YOUR_TEMPLATE_SHEET_ID_HERE"
-FORM_TEMPLATE_ID = "YOUR_TEMPLATE_FORM_ID_HERE"
+
+# --- PASTE YOUR ACTUAL IDS BELOW ---
+SHEET_TEMPLATE_ID = "PASTE_YOUR_SHEET_ID_HERE"
+FORM_TEMPLATE_ID = "PASTE_YOUR_FORM_ID_HERE"
 
 def get_services():
     creds_json = os.getenv("GOOGLE_CREDENTIALS")
     if not creds_json:
         raise ValueError("GOOGLE_CREDENTIALS secret is missing!")
     creds_info = json.loads(creds_json)
-    scopes = ['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/forms.body', 'https://www.googleapis.com/auth/spreadsheets']
+    scopes = [
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/forms.body',
+        'https://www.googleapis.com/auth/spreadsheets'
+    ]
     creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
     return build('forms', 'v1', credentials=creds), build('drive', 'v3', credentials=creds)
 
 def create_poll(f_service, d_service, title, options, type_label):
-    # 1. COPY the Template Sheet (inherits your quota)
+    # 1. COPY the Template Sheet
     sheet_copy = d_service.files().copy(
         fileId=SHEET_TEMPLATE_ID,
         body={'name': f"Results - {type_label} - {title}", 'parents': [FOLDER_ID]}
     ).execute()
     sheet_id = sheet_copy.get('id')
 
-    # 2. COPY the Template Form (inherits your quota)
+    # 2. COPY the Template Form
     form_copy = d_service.files().copy(
         fileId=FORM_TEMPLATE_ID,
         body={'name': f"UTM Tamil: {type_label} Selection", 'parents': [FOLDER_ID]}
@@ -65,10 +70,13 @@ def main():
         f_service, d_service = get_services()
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
-        if not files: return
+        if not files:
+            print("No CSV files found.")
+            return
         
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
+        
         df = pd.read_csv(latest_file)
         df.columns = df.columns.str.strip().str.upper()
         df['TYPE'] = df['TYPE'].astype(str).str.strip().str.upper()
@@ -77,12 +85,16 @@ def main():
         s_titles = df[df['TYPE'] == 'S']['TITLE'].dropna().unique().tolist()
 
         summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
+        
         if v_titles:
             url, sheet = create_poll(f_service, d_service, file_name, v_titles, "Long Video")
-            summary += f"🎬 **Long Video Poll:** [Vote Here]({url})\n📈 **Results:** [View Data](https://docs.google.com/spreadsheets/d/{sheet})\n\n"
+            summary += f"🎬 **Long Video Poll:** [Vote Here]({url})\n"
+            summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{sheet})\n\n"
+            
         if s_titles:
             url, sheet = create_poll(f_service, d_service, file_name, s_titles, "Shorts")
-            summary += f"📱 **Shorts Poll:** [Vote Here]({url})\n📈 **Results:** [View Data](https://docs.google.com/spreadsheets/d/{sheet})\n\n"
+            summary += f"📱 **Shorts Poll:** [Vote Here]({url})\n"
+            summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{sheet})\n\n"
 
         with open("poll_summary.md", "w", encoding="utf-8") as f:
             f.write(summary)
