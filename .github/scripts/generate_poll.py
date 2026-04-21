@@ -1,113 +1,78 @@
 import os
+import json
 import glob
 import pandas as pd
-import requests
-import json
-import sys
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
-def create_pollunit_poll(api_key, title, options):
-    url = "https://pollunit.com/api/v1/polls"
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "X-App-Token": api_key
-    }
-    payload = {
-        "poll": {
-            "title": title,
-            "description": "Daily content selection for **Untold Minutes Tamil**. Pick up to 3 topics!",
-            "poll_type": "dot_voting",
-            "multiple_votes_per_user": True,
-            "max_votes_per_user": 3,
-            "voting_type": "public",
-            "options_attributes": [{"text": opt} for opt in options]
-        }
-    }
-    try:
-        resp = requests.post(url, json=payload, headers=headers)
-        if resp.status_code not in [200, 201]:
-            print(f"PollUnit Error {resp.status_code}: {resp.text}")
-            return None, None
-        data = resp.json()
-        return data.get('url'), data.get('id')
-    except Exception as e:
-        print(f"Failed to communicate with PollUnit: {e}")
-        return None, None
+def get_google_service():
+    creds_json = os.getenv("GOOGLE_CREDENTIALS")
+    if not creds_json:
+        raise ValueError("GOOGLE_CREDENTIALS secret is missing!")
+    
+    creds_info = json.loads(creds_json)
+    scopes = ['https://www.googleapis.com/auth/forms.body', 'https://www.googleapis.com/auth/drive']
+    creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
+    return build('forms', 'v1', credentials=creds)
 
-def post_to_github(repo_id, cat_id, title, poll_url, token):
-    url = "https://api.github.com/graphql"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    body = (
-        f"### 🗳️ Multi-Select Poll: {title}\n\n"
-        f"Help us decide the next stories for the channel! You can vote for multiple options.\n\n"
-        f"👉 **[Click Here to Vote on PollUnit]({poll_url})**\n\n"
-        f"--- \n"
-        f"*This poll was automatically generated for Untold Minutes Tamil.*"
-    )
-    mutation = """
-    mutation($input: CreateDiscussionInput!) {
-      createDiscussion(input: $input) {
-        discussion { url }
-      }
-    }
-    """
-    variables = {"input": {"repositoryId": repo_id, "categoryId": cat_id, "title": title, "body": body}}
-    try:
-        resp = requests.post(url, json={"query": mutation, "variables": variables}, headers=headers).json()
-        return resp.get('data', {}).get('createDiscussion', {}).get('discussion', {}).get('url')
-    except Exception as e:
-        print(f"GitHub Post Error: {e}")
-        return None
+def create_google_form(service, title, options, type_name):
+    """Creates a Google Form with a Multi-Select (Checkbox) question."""
+    # 1. Create the Form
+    form_body = {"info": {"title": f"UTM Tamil: {type_name} Selection - {title}"}}
+    form = service.forms().create(body=form_body).execute()
+    form_id = form['formId']
 
-def clean_titles(titles):
-    cleaned = []
-    for t in titles:
-        t = str(t).replace('"', "'").strip()
-        if len(t) > 100: t = t[:97] + "..."
-        cleaned.append(t)
-    return cleaned
+    # 2. Add the Checkbox Question
+    update = {
+        "requests": [{
+            "createItem": {
+                "item": {
+                    "title": f"Which {type_name} stories should we create next? (Select all you like)",
+                    "questionItem": {
+                        "question": {
+                            "required": True,
+                            "choiceQuestion": {
+                                "type": "CHECKBOX", # Multiple selection enabled
+                                "options": [{"value": opt} for opt in options]
+                            }
+                        }
+                    }
+                },
+                "location": {"index": 0}
+            }
+        }]
+    }
+    service.forms().batchUpdate(formId=form_id, body=update).execute()
+    return form['responderUri']
 
 def main():
-    token = os.getenv("GH_TOKEN")
-    pu_token = os.getenv("POLLUNIT_TOKEN")
-    owner = os.getenv("REPO_OWNER")
-    repo_name = os.getenv("REPO_NAME")
-    
-    if not pu_token:
-        print("Error: POLLUNIT_TOKEN is not set.")
-        return
+    service = get_google_service()
 
+    # Find the latest planning CSV
     path = "src/01_Planning/*.csv"
     files = glob.glob(path)
-    if not files: return
+    if not files:
+        print("No planning files found.")
+        return
     latest_file = max(files, key=os.path.getmtime)
-    file_name = os.path.basename(latest_file)
-    
+    file_label = os.path.basename(latest_file)
+
     df = pd.read_csv(latest_file)
     df.columns = df.columns.str.strip().str.upper()
-    v_rows = clean_titles(df[df['TYPE'].str.strip().str.upper() == 'V']['TITLE'].dropna().tolist())
-    s_rows = clean_titles(df[df['TYPE'].str.strip().str.upper() == 'S']['TITLE'].dropna().tolist())
 
-    query_ids = "query($o:String!,$n:String!){repository(owner:$o,name:$n){id discussionCategories(first:20){nodes{id name}}}}"
-    try:
-        id_resp = requests.post("https://api.github.com/graphql", 
-                                json={"query": query_ids, "variables": {"o": owner, "n": repo_name}}, 
-                                headers={"Authorization": f"Bearer {token}"}).json()
-        repo_id = id_resp['data']['repository']['id']
-        cat_id = next(c['id'] for c in id_resp['data']['repository']['discussionCategories']['nodes'] if c['name'].lower() == 'polls')
-    except Exception as e:
-        print(f"Failed to fetch GitHub IDs: {e}")
-        return
+    # Separate Shorts (S) and Videos (V)
+    shorts = df[df['TYPE'].str.strip().str.upper() == 'S']['TITLE'].dropna().unique().tolist()
+    videos = df[df['TYPE'].str.strip().str.upper() == 'V']['TITLE'].dropna().unique().tolist()
 
-    if v_rows:
-        p_url, p_id = create_pollunit_poll(pu_token, f"Video Selection: {file_name}", v_rows[:10])
-        if p_url: print(f"SUCCESS: Video Poll live at {post_to_github(repo_id, cat_id, f'Video Selection: {file_name}', p_url, token)}")
+    # Generate Poll 1: Videos
+    if videos:
+        video_url = create_google_form(service, file_label, videos[:15], "Long Video")
+        print(f"🎬 VIDEO POLL CREATED: {video_url}")
 
-    for i in range(0, len(s_rows), 8):
-        chunk = s_rows[i:i+8]
-        p_num = (i // 8) + 1
-        p_url, p_id = create_pollunit_poll(pu_token, f"Story Selection {p_num}: {file_name}", chunk)
-        if p_url: print(f"SUCCESS: Story Poll {p_num} live at {post_to_github(repo_id, cat_id, f'Story Selection {p_num}', p_url, token)}")
+    # Generate Poll 2: Shorts
+    if shorts:
+        shorts_url = create_google_form(service, file_label, shorts[:15], "Shorts")
+        print(f"📱 SHORTS POLL CREATED: {shorts_url}")
 
 if __name__ == "__main__":
     main()
