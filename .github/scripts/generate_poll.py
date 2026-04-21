@@ -24,7 +24,6 @@ def get_services():
     
     return (
         build('forms', 'v1', credentials=creds),
-        # FIXED: Service name is 'sheets', not 'spreadsheets'
         build('sheets', 'v4', credentials=creds),
         build('drive', 'v3', credentials=creds)
     )
@@ -45,7 +44,6 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     
     # 1. Create a New Google Sheet for results
     sheet_body = {'properties': {'title': f"Results - {type_label} - {title}"}}
-    # Note: Even though service is 'sheets', the method is .spreadsheets()
     sheet = s_service.spreadsheets().create(body=sheet_body, fields='spreadsheetId').execute()
     sheet_id = sheet.get('spreadsheetId')
     move_to_folder(d_service, sheet_id, FOLDER_ID)
@@ -84,7 +82,6 @@ def main():
     try:
         f_service, s_service, d_service = get_services()
 
-        # Find latest CSV
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
         if not files:
@@ -95,10 +92,15 @@ def main():
         file_name = os.path.basename(latest_file)
 
         df = pd.read_csv(latest_file)
+        # Clean headers
         df.columns = df.columns.str.strip().str.upper()
 
-        video_titles = df[df['TYPE'].str.strip().upper() == 'V']['TITLE'].dropna().unique().tolist()
-        shorts_titles = df[df['TYPE'].str.strip().upper() == 'S']['TITLE'].dropna().unique().tolist()
+        # FIXED LOGIC: Use .str accessors for column-wide operations
+        # This prevents the 'Series object has no attribute upper' error
+        df['TYPE'] = df['TYPE'].astype(str).str.strip().str.upper()
+
+        video_titles = df[df['TYPE'] == 'V']['TITLE'].dropna().unique().tolist()
+        shorts_titles = df[df['TYPE'] == 'S']['TITLE'].dropna().unique().tolist()
 
         summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
 
