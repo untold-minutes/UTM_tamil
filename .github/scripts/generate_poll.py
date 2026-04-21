@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 
 # PASTE YOUR NEW WEB APP URL HERE
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycby4oqGylkJM4PVPjhiQVP5upxAlMOM_DrjBWXx--JCCWlkRmu4DFrfMHPlYCjNCp1a7Cg/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyuNC7qT5g-baZve8t5Bb6I07o8JbdBZlSZBWrExu8UPxISgtiqZAnHuhYLhQFO8a3M/exec"
 
 def main():
     try:
