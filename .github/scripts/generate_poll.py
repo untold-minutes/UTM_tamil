@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 
 # Ensure this is the FRESH URL from the "New Version" deployment
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyuNC7qT5g-baZve8t5Bb6I07o8JbdBZlSZBWrExu8UPxISgtiqZAnHuhYLhQFO8a3M/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz_zu20-xFXzeL4ENwWWZIfVtQdyiyw1aD2tD-NJ9s5EwwuHuabqE-9D0iCzb9kBu5FWQ/exec"
 
 def main():
     try:
