@@ -6,15 +6,16 @@ on:
 
 jobs:
   generate-poll:
-    # Only runs if someone comments exactly "/poll" on a Pull Request
-    if: github.event.comment.body == '/poll' && github.event.issue.pull_request
+    # Changed to allow both Issues and Pull Requests
+    if: github.event.comment.body == '/poll'
     runs-on: ubuntu-latest
     
     permissions:
-      contents: read
+      contents: write   # Need write to trigger actions
       discussions: write
-      pull-requests: write # Changed to write to allow posting comments
-      issues: write        # Changed to write to allow posting comments
+      pull-requests: write
+      issues: write
+      actions: write    # CRITICAL: Needed to trigger the Tally workflow
 
     steps:
       - name: Checkout Repository
@@ -26,22 +27,24 @@ jobs:
           python-version: '3.x'
 
       - name: Install Dependencies
-        # Added the Google libraries here
         run: |
-          pip install pandas google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install pandas requests
 
       - name: Run Poll Script
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          # MATCHING THE PYTHON SCRIPT NAMES:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          # Keeping these for your other logic
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
         run: python .github/scripts/generate_poll.py
 
-      - name: Post Links to Pull Request
+      - name: Post Links to Issue/PR
         uses: peter-evans/create-or-update-comment@v4
-        if: success() # Only posts if the script finished successfully
+        if: success()
         with:
           issue-number: ${{ github.event.issue.number }}
           body-path: 'poll_summary.md'
