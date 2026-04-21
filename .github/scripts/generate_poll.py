@@ -67,9 +67,22 @@ def main():
             raise ValueError(f"CSV missing required columns. Found: {list(df.columns)}")
         
         def get_titles(category):
-            # Case-insensitive match: strips spaces and converts to UPPER
+            # Case-insensitive match for values (v vs V)
             mask = df['TYPE'].astype(str).str.strip().str.upper() == category.upper()
             titles = df[mask]['TITLE'].dropna().unique().tolist()
             return [str(t).strip() for t in titles if str(t).strip()]
 
-        video_titles = get_titles('V
+        video_titles = get_titles('V')
+        shorts_titles = get_titles('S')
+
+        summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
+        summary += "> 💡 *Winners will be posted here automatically after the 2-minute test period.*\n\n"
+
+        for titles, label, icon in [(video_titles, "Long Video", "🎬"), (shorts_titles, "Shorts", "📱")]:
+            if not titles:
+                print(f"No titles found for {label}")
+                continue
+
+            print(f"Sending {len(titles)} titles for {label} to Google...")
+            
+            response = requests.post(
