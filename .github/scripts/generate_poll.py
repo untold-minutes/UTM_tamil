@@ -14,9 +14,11 @@ def get_services():
         raise ValueError("GOOGLE_CREDENTIALS secret is missing!")
     
     creds_info = json.loads(creds_json)
-    scopes = ['https://www.googleapis.com/auth/drive', 
-              'https://www.googleapis.com/auth/forms.body', 
-              'https://www.googleapis.com/auth/spreadsheets']
+    scopes = [
+        'https://www.googleapis.com/auth/forms.body',
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/spreadsheets'
+    ]
     creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
     
     return (
@@ -26,12 +28,14 @@ def get_services():
     )
 
 def create_poll(f_service, s_service, d_service, title, options, type_label):
-    # 1. Create Sheet using the Drive API (not Sheets API) to force Folder location
+    # 1. Create the Google Sheet directly in the folder
+    # We use 'ignoreDefaultVisibility' to ensure it doesn't try to land in the bot's root first
     sheet_metadata = {
         'name': f"Results - {type_label} - {title}",
         'mimeType': 'application/vnd.google-apps.spreadsheet',
         'parents': [FOLDER_ID]
     }
+    
     sheet_file = d_service.files().create(
         body=sheet_metadata,
         supportsAllDrives=True,
@@ -39,12 +43,13 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     ).execute()
     sheet_id = sheet_file.get('id')
 
-    # 2. Create Form using the Drive API
+    # 2. Create the Google Form directly in the folder
     form_metadata = {
         'name': f"UTM Tamil: {type_label} Selection",
         'mimeType': 'application/vnd.google-apps.form',
         'parents': [FOLDER_ID]
     }
+    
     form_file = d_service.files().create(
         body=form_metadata,
         supportsAllDrives=True,
@@ -52,7 +57,7 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     ).execute()
     form_id = form_file.get('id')
 
-    # 3. Add Questions via Forms API
+    # 3. Add the Checkbox Question to the Form
     update = {
         "requests": [{
             "createItem": {
@@ -74,15 +79,19 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     }
     f_service.forms().batchUpdate(formId=form_id, body=update).execute()
 
+    # Fetch the shareable URL
     final_form = f_service.forms().get(formId=form_id).execute()
     return final_form['responderUri'], sheet_id
 
 def main():
     try:
         f_service, s_service, d_service = get_services()
+
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
-        if not files: return
+        if not files:
+            print("No CSV files found.")
+            return
         
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
@@ -110,8 +119,15 @@ def main():
             f.write(summary)
             
     except Exception as e:
+        # Check if the quota error is occurring and suggest the final fix
+        if "storageQuotaExceeded" in str(e):
+            msg = "❌ **Quota Error:** The bot's 0GB limit is blocking creation. Please empty your Drive trash and check if your personal 15GB storage is full."
+        else:
+            msg = f"❌ **Error generating polls:** {str(e)}"
+            
         with open("poll_summary.md", "w", encoding="utf-8") as f:
-            f.write(f"❌ **Error generating polls:** {str(e)}")
+            f.write(msg)
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
