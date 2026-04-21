@@ -37,7 +37,7 @@ def trigger_tally_workflow(form_id, poll_type):
     }
     
     try:
-        resp = requests.post(dispatch_url, headers=headers, json=payload)
+        resp = requests.post(dispatch_url, headers=headers, json=payload, timeout=30)
         if resp.status_code == 204:
             print(f"✅ Tally workflow triggered for {poll_type}")
         else:
@@ -76,13 +76,11 @@ def main():
         shorts_titles = get_titles('S')
 
         summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
-        summary += "> 💡 *Winners will be posted here automatically after the 2-minute test period.*\n\n"
+        summary += "> 💡 *Winners will be posted here automatically after the test period.*\n\n"
 
         for titles, label, icon in [(video_titles, "Long Video", "🎬"), (shorts_titles, "Shorts", "📱")]:
             if not titles:
                 print(f"No titles found for {label}")
                 continue
 
-            print(f"Sending {len(titles)} titles for {label} to Google...")
-            
-            response = requests.post(
+            print(f"Sending {len(titles)}
