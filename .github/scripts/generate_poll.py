@@ -5,23 +5,36 @@ import requests
 import json
 import re
 
-# ENSURE THIS IS YOUR LATEST URL
+# ENSURE THIS IS YOUR LATEST URL FROM GOOGLE APPS SCRIPT
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxYBHdnsIKVvdK1FJLMMsQdRiMA4qitvag4pZj6d9Z6NH18FDDCPnezGhQSQGbSRjej/exec"
 
 def extract_form_id(url):
-    """Extracts the unique ID from a Google Form URL."""
+    """Robust extraction of Google Form ID from various URL formats."""
     if not url:
         return None
-    match = re.search(r"/forms/d/e/(.*?)/viewform", url)
-    return match.group(1) if match else None
+    # Captures the ID from /forms/d/e/.../viewform OR /forms/d/.../edit
+    match = re.search(r"/d/(?:e/)?([^/]+)", url)
+    if match:
+        f_id = match.group(1)
+        print(f"DEBUG: Extracted Form ID: {f_id}")
+        return f_id
+    print(f"DEBUG: Could not extract ID from URL: {url}")
+    return None
 
 def trigger_tally_workflow(form_id, poll_type):
-    """Triggers the GitHub Action to fetch results."""
+    """Triggers the GitHub Action to fetch results in 2 minutes (for testing)."""
     github_token = os.environ.get("GITHUB_TOKEN")
     repo = os.environ.get("GITHUB_REPOSITORY")
+    issue_number = os.environ.get("ISSUE_NUMBER", "0")
     
-    if not github_token or not repo or not form_id:
-        print(f"Skipping tally trigger for {poll_type}: Missing credentials or ID")
+    if not github_token:
+        print(f"❌ Missing GITHUB_TOKEN for {poll_type}")
+        return
+    if not repo:
+        print(f"❌ Missing GITHUB_REPOSITORY for {poll_type}")
+        return
+    if not form_id:
+        print(f"❌ Missing Form ID for {poll_type}")
         return
 
     dispatch_url = f"https://api.github.com/repos/{repo}/dispatches"
@@ -34,14 +47,14 @@ def trigger_tally_workflow(form_id, poll_type):
         "client_payload": {
             "form_id": form_id,
             "poll_type": poll_type,
-            "issue_number": os.environ.get("ISSUE_NUMBER", "0") 
+            "issue_number": issue_number
         }
     }
     
     try:
         resp = requests.post(dispatch_url, headers=headers, json=payload, timeout=30)
         if resp.status_code == 204:
-            print(f"✅ Tally workflow triggered for {poll_type}")
+            print(f"✅ Tally workflow successfully triggered for {poll_type}")
         else:
             print(f"❌ GitHub Dispatch Failed: {resp.status_code} - {resp.text}")
     except Exception as e:
@@ -57,19 +70,17 @@ def main():
         
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
-        print(f"Processing: {file_name}")
+        print(f"--- Starting Process for: {file_name} ---")
         
         # 1. Load and handle headers case-insensitively
         df = pd.read_csv(latest_file)
         df.columns = df.columns.str.strip().str.upper()
         
         # Verify required columns exist
-        required = {'TYPE', 'TITLE'}
-        if not required.issubset(df.columns):
-            raise ValueError(f"CSV missing required columns. Found: {list(df.columns)}")
+        if 'TYPE' not in df.columns or 'TITLE' not in df.columns:
+            raise ValueError(f"CSV missing 'TYPE' or 'TITLE' columns. Found: {list(df.columns)}")
         
         def get_titles(category):
-            # Case-insensitive match for values (v vs V)
             mask = df['TYPE'].astype(str).str.strip().str.upper() == category.upper()
             titles = df[mask]['TITLE'].dropna().unique().tolist()
             return [str(t).strip() for t in titles if str(t).strip()]
@@ -78,15 +89,14 @@ def main():
         shorts_titles = get_titles('S')
 
         summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
-        summary += "> 💡 *Winners will be posted here automatically after the test period.*\n\n"
+        summary += "> 💡 *Winners will be posted here automatically after the 2-minute test period.*\n\n"
 
         for titles, label, icon in [(video_titles, "Long Video", "🎬"), (shorts_titles, "Shorts", "📱")]:
             if not titles:
-                print(f"No titles found for {label}")
+                print(f"Notice: No titles found for {label}")
                 continue
 
-            num_titles = len(titles)
-            print(f"Sending {num_titles} titles for {label} to Google...")
+            print(f"Sending {len(titles)} titles for {label} to Google...")
             
             response = requests.post(
                 WEB_APP_URL, 
@@ -101,29 +111,21 @@ def main():
             try:
                 res_data = response.json()
             except Exception:
-                print(f"❌ Critical Error: Google did not return JSON. Raw output: {response.text}")
-                summary += f"⚠️ **{label}**: Google connection error. Check Deployment URL.\n\n"
+                print(f"❌ Critical Error: Google returned HTML instead of JSON. Raw: {response.text[:200]}...")
+                summary += f"⚠️ **{label}**: Connection error with Google Script.\n\n"
                 continue
 
             if "error" in res_data:
                 summary += f"⚠️ **{label}**: {res_data['error']}\n\n"
             else:
-                summary += f"{icon} **{label} Poll**: [Vote Here]({res_data['url']})\n"
-                # sheetId is manually linked in our current GAS fix, but we keep the URL structure
-                summary += f"📈 **Results**: [View Data](https://docs.google.com/spreadsheets/d/{res_data.get('sheetId', 'manual')})\n\n"
+                form_url = res_data.get('url')
+                summary += f"{icon} **{label} Poll**: [Vote Here]({form_url})\n"
+                summary += f"📈 **Results**: [View Data](https://docs.google.com/spreadsheets/d/{res_data.get('sheetId', 'Check-Manual')})\n\n"
                 
-                # 3. Trigger Tally
-                f_id = extract_form_id(res_data.get('url'))
-                if f_id:
-                    trigger_tally_workflow(f_id, label)
+                # 3. Trigger the 2-minute tally action
+                f_id = extract_form_id(form_url)
+                trigger_tally_workflow(f_id, label)
 
         with open("poll_summary.md", "w", encoding="utf-8") as f:
             f.write(summary)
             
-    except Exception as e:
-        print(f"❌ MAIN ERROR: {str(e)}")
-        with open("poll_summary.md", "w", encoding="utf-8") as f:
-            f.write(f"❌ **Automation Error**: {str(e)}")
-
-if __name__ == "__main__":
-    main()
