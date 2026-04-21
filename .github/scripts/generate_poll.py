@@ -4,7 +4,6 @@ import glob
 import pandas as pd
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaInMemoryUpload
 
 # --- CONFIGURATION ---
 FOLDER_ID = "1tYV8MOD4AiCdWIMG_m_DwYjlxcEHOzBZ" 
@@ -15,11 +14,9 @@ def get_services():
         raise ValueError("GOOGLE_CREDENTIALS secret is missing!")
     
     creds_info = json.loads(creds_json)
-    scopes = [
-        'https://www.googleapis.com/auth/forms.body',
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/spreadsheets'
-    ]
+    scopes = ['https://www.googleapis.com/auth/drive', 
+              'https://www.googleapis.com/auth/forms.body', 
+              'https://www.googleapis.com/auth/spreadsheets']
     creds = service_account.Credentials.from_service_account_info(creds_info, scopes=scopes)
     
     return (
@@ -29,40 +26,33 @@ def get_services():
     )
 
 def create_poll(f_service, s_service, d_service, title, options, type_label):
-    # 1. Create the Google Sheet (Bypass Quota Method)
+    # 1. Create Sheet using the Drive API (not Sheets API) to force Folder location
     sheet_metadata = {
         'name': f"Results - {type_label} - {title}",
         'mimeType': 'application/vnd.google-apps.spreadsheet',
         'parents': [FOLDER_ID]
     }
-    
-    # We use an empty upload to force Google to associate the file with YOUR folder's quota
-    empty_media = MediaInMemoryUpload(b'', mimetype='text/plain')
-    
     sheet_file = d_service.files().create(
         body=sheet_metadata,
-        media_body=empty_media,
         supportsAllDrives=True,
         fields='id'
     ).execute()
     sheet_id = sheet_file.get('id')
 
-    # 2. Create the Google Form (Bypass Quota Method)
+    # 2. Create Form using the Drive API
     form_metadata = {
         'name': f"UTM Tamil: {type_label} Selection",
         'mimeType': 'application/vnd.google-apps.form',
         'parents': [FOLDER_ID]
     }
-    
     form_file = d_service.files().create(
         body=form_metadata,
-        media_body=empty_media,
         supportsAllDrives=True,
         fields='id'
     ).execute()
     form_id = form_file.get('id')
 
-    # 3. Add the Checkbox Question to the Form
+    # 3. Add Questions via Forms API
     update = {
         "requests": [{
             "createItem": {
