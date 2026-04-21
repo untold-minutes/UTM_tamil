@@ -6,14 +6,13 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # --- CONFIGURATION ---
-# Your UTM_Content_Planning Folder ID
 FOLDER_ID = "1tYV8MOD4AiCdWIMG_m_DwYjlxcEHOzBZ" 
 
 def get_services():
     """Authenticates and returns the Google Cloud services."""
     creds_json = os.getenv("GOOGLE_CREDENTIALS")
     if not creds_json:
-        raise ValueError("GOOGLE_CREDENTIALS secret is missing from GitHub Secrets!")
+        raise ValueError("GOOGLE_CREDENTIALS secret is missing!")
     
     creds_info = json.loads(creds_json)
     scopes = [
@@ -25,12 +24,13 @@ def get_services():
     
     return (
         build('forms', 'v1', credentials=creds),
-        build('spreadsheets', 'v4', credentials=creds),
+        # FIXED: Service name is 'sheets', not 'spreadsheets'
+        build('sheets', 'v4', credentials=creds),
         build('drive', 'v3', credentials=creds)
     )
 
 def move_to_folder(d_service, file_id, folder_id):
-    """Moves the created file from the service account root to your folder."""
+    """Moves the created file into your UTM_Content_Planning folder."""
     file = d_service.files().get(fileId=file_id, fields='parents').execute()
     previous_parents = ",".join(file.get('parents'))
     d_service.files().update(
@@ -41,10 +41,11 @@ def move_to_folder(d_service, file_id, folder_id):
     ).execute()
 
 def create_poll(f_service, s_service, d_service, title, options, type_label):
-    """Creates a linked Sheet and Form, then moves them to the specified folder."""
+    """Creates a Sheet and Form, then moves them to the specified folder."""
     
     # 1. Create a New Google Sheet for results
     sheet_body = {'properties': {'title': f"Results - {type_label} - {title}"}}
+    # Note: Even though service is 'sheets', the method is .spreadsheets()
     sheet = s_service.spreadsheets().create(body=sheet_body, fields='spreadsheetId').execute()
     sheet_id = sheet.get('spreadsheetId')
     move_to_folder(d_service, sheet_id, FOLDER_ID)
@@ -55,12 +56,12 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     form_id = form['formId']
     move_to_folder(d_service, form_id, FOLDER_ID)
 
-    # 3. Add the Checkbox Question (Multi-select)
+    # 3. Add the Checkbox Question
     update = {
         "requests": [{
             "createItem": {
                 "item": {
-                    "title": f"Which {type_label} stories should we create next? (Select all you like)",
+                    "title": f"Which {type_label} stories should we create next?",
                     "questionItem": {
                         "question": {
                             "required": True,
@@ -83,7 +84,7 @@ def main():
     try:
         f_service, s_service, d_service = get_services()
 
-        # Identify the latest CSV in Planning folder
+        # Find latest CSV
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
         if not files:
@@ -93,7 +94,6 @@ def main():
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
 
-        # Load and filter data
         df = pd.read_csv(latest_file)
         df.columns = df.columns.str.strip().str.upper()
 
@@ -112,14 +112,13 @@ def main():
             summary += f"📱 **Shorts Poll:** [Vote Here]({s_url})\n"
             summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{s_sheet})\n\n"
 
-        # Create the summary file for the GitHub Action to post as a comment
         with open("poll_summary.md", "w", encoding="utf-8") as f:
             f.write(summary)
             
     except Exception as e:
         with open("poll_summary.md", "w", encoding="utf-8") as f:
             f.write(f"❌ **Error generating polls:** {str(e)}")
-        print(f"Error: {e}")
+        print(f"Error details: {e}")
 
 if __name__ == "__main__":
     main()
