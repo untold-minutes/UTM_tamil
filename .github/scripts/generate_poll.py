@@ -9,7 +9,6 @@ from googleapiclient.discovery import build
 FOLDER_ID = "1tYV8MOD4AiCdWIMG_m_DwYjlxcEHOzBZ" 
 
 def get_services():
-    """Authenticates and returns the Google Cloud services."""
     creds_json = os.getenv("GOOGLE_CREDENTIALS")
     if not creds_json:
         raise ValueError("GOOGLE_CREDENTIALS secret is missing!")
@@ -28,33 +27,30 @@ def get_services():
         build('drive', 'v3', credentials=creds)
     )
 
-def move_to_folder(d_service, file_id, folder_id):
-    """Moves the created file into your UTM_Content_Planning folder."""
-    file = d_service.files().get(fileId=file_id, fields='parents').execute()
-    previous_parents = ",".join(file.get('parents'))
-    d_service.files().update(
-        fileId=file_id,
-        addParents=folder_id,
-        removeParents=previous_parents,
-        fields='id, parents'
-    ).execute()
-
 def create_poll(f_service, s_service, d_service, title, options, type_label):
-    """Creates a Sheet and Form, then moves them to the specified folder."""
-    
-    # 1. Create a New Google Sheet for results
-    sheet_body = {'properties': {'title': f"Results - {type_label} - {title}"}}
-    sheet = s_service.spreadsheets().create(body=sheet_body, fields='spreadsheetId').execute()
-    sheet_id = sheet.get('spreadsheetId')
-    move_to_folder(d_service, sheet_id, FOLDER_ID)
+    # 1. Create the Google Sheet directly in the folder
+    sheet_metadata = {
+        'properties': {'title': f"Results - {type_label} - {title}"}
+    }
+    # We use the drive service to place it in the folder immediately
+    sheet_file = d_service.files().create(
+        body={'name': f"Results - {type_label} - {title}", 
+              'mimeType': 'application/vnd.google-apps.spreadsheet',
+              'parents': [FOLDER_ID]},
+        fields='id'
+    ).execute()
+    sheet_id = sheet_file.get('id')
 
-    # 2. Create the Google Form
-    form_body = {"info": {"title": f"UTM Tamil: {type_label} Selection"}}
-    form = f_service.forms().create(body=form_body).execute()
-    form_id = form['formId']
-    move_to_folder(d_service, form_id, FOLDER_ID)
+    # 2. Create the Google Form directly in the folder
+    form_file = d_service.files().create(
+        body={'name': f"UTM Tamil: {type_label} Selection", 
+              'mimeType': 'application/vnd.google-apps.form',
+              'parents': [FOLDER_ID]},
+        fields='id'
+    ).execute()
+    form_id = form_file.get('id')
 
-    # 3. Add the Checkbox Question
+    # 3. Add the Checkbox Question to the Form
     update = {
         "requests": [{
             "createItem": {
@@ -76,7 +72,9 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     }
     f_service.forms().batchUpdate(formId=form_id, body=update).execute()
 
-    return form['responderUri'], sheet_id
+    # Get the shareable link for the form
+    form_metadata = f_service.forms().get(formId=form_id).execute()
+    return form_metadata['responderUri'], sheet_id
 
 def main():
     try:
@@ -85,18 +83,14 @@ def main():
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
         if not files:
-            print("No CSV files found in src/01_Planning/")
+            print("No CSV files found.")
             return
         
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
 
         df = pd.read_csv(latest_file)
-        # Clean headers
         df.columns = df.columns.str.strip().str.upper()
-
-        # FIXED LOGIC: Use .str accessors for column-wide operations
-        # This prevents the 'Series object has no attribute upper' error
         df['TYPE'] = df['TYPE'].astype(str).str.strip().str.upper()
 
         video_titles = df[df['TYPE'] == 'V']['TITLE'].dropna().unique().tolist()
