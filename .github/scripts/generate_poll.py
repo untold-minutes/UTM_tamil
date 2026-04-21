@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 import json
 
-# PASTE YOUR WEB APP URL HERE
+# ENSURE THIS IS YOUR LATEST URL
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycby6Dp1UG5URgTGEFRjOujy9DRoUSS_CiPgHaDg1fs96lxviN7H1KBXVPPU4eGx0XMKGEA/exec"
 
 def main():
@@ -16,17 +16,13 @@ def main():
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
         
-        # Load CSV and force headers to uppercase
+        # Load and fix headers
         df = pd.read_csv(latest_file)
         df.columns = df.columns.str.strip().str.upper()
         
-        # FIX: Force 'TYPE' column to uppercase for matching
-        def get_titles(category_code):
-            if 'TYPE' not in df.columns or 'TITLE' not in df.columns:
-                raise Exception("CSV missing 'TYPE' or 'TITLE' columns.")
-            
-            # This line handles v, V, s, or S
-            mask = df['TYPE'].astype(str).str.strip().str.upper() == category_code.upper()
+        def get_titles(category):
+            # Case-insensitive matching for 'v' or 's'
+            mask = df['TYPE'].astype(str).str.strip().str.upper() == category.upper()
             titles = df[mask]['TITLE'].dropna().unique().tolist()
             return [str(t).strip() for t in titles if str(t).strip()]
 
@@ -36,9 +32,9 @@ def main():
         summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
 
         for titles, label, icon in [(video_titles, "Long Video", "🎬"), (shorts_titles, "Shorts", "📱")]:
-            # Always send the request so the Apps Script can create the file, 
-            # even if the list is empty (it will now handle it gracefully)
-            print(f"Processing {label}...")
+            # Debugging print to check titles before sending
+            print(f"Sending {len(titles)} titles for {label}")
+            
             response = requests.post(WEB_APP_URL, json={
                 "title": file_name,
                 "options": titles,
