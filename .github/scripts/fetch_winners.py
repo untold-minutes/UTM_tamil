@@ -5,7 +5,7 @@ from googleapiclient.discovery import build
 
 def fetch_and_rank():
     # 1. Setup Google API
-    creds_json = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT'])
+    creds_json = json.loads(os.environ['GOOGLE_CREDENTIALS'])
     creds = service_account.Credentials.from_service_account_info(creds_json)
     service = build('forms', 'v1', credentials=creds)
 
