@@ -4,6 +4,7 @@ import glob
 import pandas as pd
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaInMemoryUpload
 
 # --- CONFIGURATION ---
 FOLDER_ID = "1tYV8MOD4AiCdWIMG_m_DwYjlxcEHOzBZ" 
@@ -28,24 +29,25 @@ def get_services():
     )
 
 def create_poll(f_service, s_service, d_service, title, options, type_label):
-    """Bypasses Service Account 0GB quota by creating files via Drive API v3."""
-    
-    # 1. Create the Google Sheet directly in the folder
+    # 1. Create the Google Sheet (Bypass Quota Method)
     sheet_metadata = {
         'name': f"Results - {type_label} - {title}",
         'mimeType': 'application/vnd.google-apps.spreadsheet',
         'parents': [FOLDER_ID]
     }
     
-    # Critical: Use supportsAllDrives and ensure parents is set
+    # We use an empty upload to force Google to associate the file with YOUR folder's quota
+    empty_media = MediaInMemoryUpload(b'', mimetype='text/plain')
+    
     sheet_file = d_service.files().create(
         body=sheet_metadata,
+        media_body=empty_media,
         supportsAllDrives=True,
         fields='id'
     ).execute()
     sheet_id = sheet_file.get('id')
 
-    # 2. Create the Google Form directly in the folder
+    # 2. Create the Google Form (Bypass Quota Method)
     form_metadata = {
         'name': f"UTM Tamil: {type_label} Selection",
         'mimeType': 'application/vnd.google-apps.form',
@@ -54,6 +56,7 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     
     form_file = d_service.files().create(
         body=form_metadata,
+        media_body=empty_media,
         supportsAllDrives=True,
         fields='id'
     ).execute()
@@ -81,18 +84,15 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     }
     f_service.forms().batchUpdate(formId=form_id, body=update).execute()
 
-    # Get the responder URL
     final_form = f_service.forms().get(formId=form_id).execute()
     return final_form['responderUri'], sheet_id
 
 def main():
     try:
         f_service, s_service, d_service = get_services()
-
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
-        if not files:
-            return
+        if not files: return
         
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
@@ -121,10 +121,7 @@ def main():
             
     except Exception as e:
         with open("poll_summary.md", "w", encoding="utf-8") as f:
-            if "storageQuotaExceeded" in str(e):
-                f.write("❌ **Quota Error:** The bot is trying to use its own storage. Ensure the folder is shared with 'Editor' rights and your own Google Drive isn't full.")
-            else:
-                f.write(f"❌ **Error generating polls:** {str(e)}")
+            f.write(f"❌ **Error generating polls:** {str(e)}")
 
 if __name__ == "__main__":
     main()
