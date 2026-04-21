@@ -6,11 +6,9 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # --- CONFIGURATION ---
-# Your UTM_Content_Planning Folder ID
 FOLDER_ID = "1tYV8MOD4AiCdWIMG_m_DwYjlxcEHOzBZ" 
 
 def get_services():
-    """Authenticates and returns the Google Cloud services."""
     creds_json = os.getenv("GOOGLE_CREDENTIALS")
     if not creds_json:
         raise ValueError("GOOGLE_CREDENTIALS secret is missing!")
@@ -30,7 +28,7 @@ def get_services():
     )
 
 def create_poll(f_service, s_service, d_service, title, options, type_label):
-    """Creates files directly inside the shared folder to bypass quota limits."""
+    """Bypasses Service Account 0GB quota by creating files via Drive API v3."""
     
     # 1. Create the Google Sheet directly in the folder
     sheet_metadata = {
@@ -39,6 +37,7 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
         'parents': [FOLDER_ID]
     }
     
+    # Critical: Use supportsAllDrives and ensure parents is set
     sheet_file = d_service.files().create(
         body=sheet_metadata,
         supportsAllDrives=True,
@@ -82,7 +81,7 @@ def create_poll(f_service, s_service, d_service, title, options, type_label):
     }
     f_service.forms().batchUpdate(formId=form_id, body=update).execute()
 
-    # Get the responder URL for the GitHub comment
+    # Get the responder URL
     final_form = f_service.forms().get(formId=form_id).execute()
     return final_form['responderUri'], sheet_id
 
@@ -90,21 +89,16 @@ def main():
     try:
         f_service, s_service, d_service = get_services()
 
-        # Find the latest CSV in the planning folder
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
         if not files:
-            print("No CSV files found in src/01_Planning/")
             return
         
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
 
-        # Load and clean the CSV data
         df = pd.read_csv(latest_file)
         df.columns = df.columns.str.strip().str.upper()
-        
-        # Ensure TYPE column is uppercase and string-based
         df['TYPE'] = df['TYPE'].astype(str).str.strip().str.upper()
 
         video_titles = df[df['TYPE'] == 'V']['TITLE'].dropna().unique().tolist()
@@ -122,15 +116,15 @@ def main():
             summary += f"📱 **Shorts Poll:** [Vote Here]({s_url})\n"
             summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{s_sheet})\n\n"
 
-        # Write to the summary file for the GitHub Action to post
         with open("poll_summary.md", "w", encoding="utf-8") as f:
             f.write(summary)
             
     except Exception as e:
-        # If any error occurs, output it to the summary so you can see it on GitHub
         with open("poll_summary.md", "w", encoding="utf-8") as f:
-            f.write(f"❌ **Error generating polls:** {str(e)}")
-        print(f"Detailed Error: {e}")
+            if "storageQuotaExceeded" in str(e):
+                f.write("❌ **Quota Error:** The bot is trying to use its own storage. Ensure the folder is shared with 'Editor' rights and your own Google Drive isn't full.")
+            else:
+                f.write(f"❌ **Error generating polls:** {str(e)}")
 
 if __name__ == "__main__":
     main()
