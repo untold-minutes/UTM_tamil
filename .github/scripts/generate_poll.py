@@ -4,11 +4,12 @@ import pandas as pd
 import requests
 import json
 
-# ENSURE THIS IS THE URL YOU JUST TESTED
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz_zu20-xFXzeL4ENwWWZIfVtQdyiyw1aD2tD-NJ9s5EwwuHuabqE-9D0iCzb9kBu5FWQ/exec"
+# PASTE YOUR WEB APP URL HERE
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycby98duAczLjFEvLb9qsmCI_OKNCxTVHOfRGypfQ2WctVNJ00wBUi0HOcdrweY_Va2rOSw/exec"
 
 def main():
     try:
+        # 1. Find the latest planning CSV
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
         if not files:
@@ -18,47 +19,55 @@ def main():
         latest_file = max(files, key=os.path.getmtime)
         file_name = os.path.basename(latest_file)
         
+        # 2. Load and clean CSV columns
         df = pd.read_csv(latest_file)
         df.columns = df.columns.str.strip().str.upper()
         
-        video_titles = df[df['TYPE'] == 'V']['TITLE'].dropna().unique().tolist()
-        shorts_titles = df[df['TYPE'] == 'S']['TITLE'].dropna().unique().tolist()
+        # 3. Clean and Extract Titles (Ensuring strings only, no empty values)
+        def clean_titles(filter_type):
+            titles = df[df['TYPE'].astype(str).str.strip().str.upper() == filter_type]['TITLE']
+            return [str(t).strip() for t in titles.dropna().unique().tolist() if str(t).strip()]
+
+        video_titles = clean_titles('V')
+        shorts_titles = clean_titles('S')
 
         summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
 
-        for titles, label, icon in [(video_titles, "Long Video", "🎬"), (shorts_titles, "Shorts", "📱")]:
+        # 4. Trigger Apps Script for each category
+        categories = [
+            (video_titles, "Long Video", "🎬"),
+            (shorts_titles, "Shorts", "📱")
+        ]
+
+        for titles, label, icon in categories:
             if titles:
-                print(f"Sending request for {label}...")
+                print(f"Requesting poll for {label}...")
                 response = requests.post(WEB_APP_URL, json={
                     "title": file_name,
                     "options": titles,
                     "type": label
                 }, timeout=60)
                 
-                # Parse the response safely
-                try:
-                    res_data = response.json()
-                except Exception:
-                    raise Exception(f"Apps Script sent back non-JSON text: {response.text[:200]}")
+                if response.status_code != 200:
+                    raise Exception(f"HTTP {response.status_code}: {response.text[:100]}")
 
-                # Check if the Apps Script reported an internal error
+                res_data = response.json()
+                
                 if "error" in res_data:
                     raise Exception(f"Apps Script Error: {res_data['error']}")
 
-                # Only try to access 'url' if it exists in the response
-                if 'url' in res_data:
-                    summary += f"{icon} **{label} Poll:** [Vote Here]({res_data['url']})\n"
-                    summary += f"📈 **Results:** [View Data](https://docs.google.com/spreadsheets/d/{res_data['sheetId']})\n\n"
-                else:
-                    raise Exception(f"Response missing 'url'. Full data received: {res_data}")
+                summary += f"{icon} **{label} Poll:** [Vote Here]({res_data['url']})\n"
+                summary += f"📈 **Results:** [View Data](https://docs.google.com/spreadsheets/d/{res_data['sheetId']})\n\n"
 
+        # 5. Save summary for GitHub Comment
         with open("poll_summary.md", "w", encoding="utf-8") as f:
             f.write(summary)
             
     except Exception as e:
+        error_msg = f"❌ **Automation Error:** {str(e)}"
         with open("poll_summary.md", "w", encoding="utf-8") as f:
-            f.write(f"❌ **Detailed Error:** {str(e)}")
-        print(f"Detailed Log: {e}")
+            f.write(error_msg)
+        print(error_msg)
 
 if __name__ == "__main__":
     main()
