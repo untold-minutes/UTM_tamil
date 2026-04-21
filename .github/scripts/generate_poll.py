@@ -10,6 +10,8 @@ WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxRKjzgG1AhkE2bcPNwyhFezT
 
 def extract_form_id(url):
     """Extracts the unique ID from a Google Form URL."""
+    if not url:
+        return None
     match = re.search(r"/forms/d/e/(.*?)/viewform", url)
     return match.group(1) if match else None
 
@@ -83,4 +85,45 @@ def main():
                 print(f"No titles found for {label}")
                 continue
 
-            print(f"Sending {len(titles)}
+            num_titles = len(titles)
+            print(f"Sending {num_titles} titles for {label} to Google...")
+            
+            response = requests.post(
+                WEB_APP_URL, 
+                json={
+                    "title": file_name,
+                    "options": titles,
+                    "type": label
+                }, 
+                timeout=60
+            )
+            
+            try:
+                res_data = response.json()
+            except Exception:
+                print(f"❌ Critical Error: Google did not return JSON. Raw output: {response.text}")
+                summary += f"⚠️ **{label}**: Google connection error. Check Deployment URL.\n\n"
+                continue
+
+            if "error" in res_data:
+                summary += f"⚠️ **{label}**: {res_data['error']}\n\n"
+            else:
+                summary += f"{icon} **{label} Poll**: [Vote Here]({res_data['url']})\n"
+                # sheetId is manually linked in our current GAS fix, but we keep the URL structure
+                summary += f"📈 **Results**: [View Data](https://docs.google.com/spreadsheets/d/{res_data.get('sheetId', 'manual')})\n\n"
+                
+                # 3. Trigger Tally
+                f_id = extract_form_id(res_data.get('url'))
+                if f_id:
+                    trigger_tally_workflow(f_id, label)
+
+        with open("poll_summary.md", "w", encoding="utf-8") as f:
+            f.write(summary)
+            
+    except Exception as e:
+        print(f"❌ MAIN ERROR: {str(e)}")
+        with open("poll_summary.md", "w", encoding="utf-8") as f:
+            f.write(f"❌ **Automation Error**: {str(e)}")
+
+if __name__ == "__main__":
+    main()
