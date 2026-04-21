@@ -3,32 +3,21 @@ import glob
 import pandas as pd
 import requests
 import json
-import re
 
-# ENSURE THIS IS YOUR LATEST URL FROM GOOGLE APPS SCRIPT
+# Replace with your NEW Deployment URL from Google Apps Script
 WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxYBHdnsIKVvdK1FJLMMsQdRiMA4qitvag4pZj6d9Z6NH18FDDCPnezGhQSQGbSRjej/exec"
 
-def extract_form_id(url):
-    """Robust extraction of Google Form ID from various URL formats."""
-    if not url:
-        return None
-    # Captures ID from /d/e/.../viewform OR /d/.../edit
-    match = re.search(r"/d/(?:e/)?([^/]+)", url)
-    if match:
-        f_id = match.group(1)
-        print(f"DEBUG: Extracted Form ID: {f_id}")
-        return f_id
-    print(f"DEBUG: Could not extract ID from URL: {url}")
-    return None
-
 def trigger_tally_workflow(form_id, poll_type):
-    """Triggers the GitHub Action to fetch results later."""
+    """
+    Sends the Internal Form ID to GitHub Actions to trigger the 2-minute 
+    tally/fetch_winners script.
+    """
     github_token = os.environ.get("GITHUB_TOKEN")
     repo = os.environ.get("GITHUB_REPOSITORY")
     issue_number = os.environ.get("ISSUE_NUMBER", "0")
     
     if not github_token or not repo or not form_id:
-        print(f"❌ Skipping Tally Trigger: Missing environment variables or ID")
+        print(f"❌ Skipping Tally Trigger for {poll_type}: Missing environment variables or ID.")
         return
 
     dispatch_url = f"https://api.github.com/repos/{repo}/dispatches"
@@ -36,11 +25,12 @@ def trigger_tally_workflow(form_id, poll_type):
         "Authorization": f"token {github_token}",
         "Accept": "application/vnd.github.v3+json"
     }
+    
     payload = {
         "event_type": "poll_started",
         "client_payload": {
-            "form_id": form_id,
-            "poll_type": poll_type,
+            "form_id": str(form_id),
+            "poll_type": str(poll_type),
             "issue_number": str(issue_number)
         }
     }
@@ -48,7 +38,7 @@ def trigger_tally_workflow(form_id, poll_type):
     try:
         resp = requests.post(dispatch_url, headers=headers, json=payload, timeout=30)
         if resp.status_code == 204:
-            print(f"✅ Tally workflow successfully triggered for {poll_type}")
+            print(f"✅ Tally workflow successfully triggered for {poll_type} (ID: {form_id})")
         else:
             print(f"❌ GitHub Dispatch Failed: {resp.status_code} - {resp.text}")
     except Exception as e:
@@ -56,6 +46,7 @@ def trigger_tally_workflow(form_id, poll_type):
 
 def main():
     try:
+        # 1. Locate the latest CSV file
         path = "src/01_Planning/*.csv"
         files = glob.glob(path)
         if not files:
@@ -66,7 +57,7 @@ def main():
         file_name = os.path.basename(latest_file)
         print(f"--- Processing: {file_name} ---")
         
-        # Load and handle headers case-insensitively
+        # 2. Load and clean data
         df = pd.read_csv(latest_file)
         df.columns = df.columns.str.strip().str.upper()
         
@@ -82,10 +73,12 @@ def main():
         shorts_titles = get_titles('S')
 
         summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
-        summary += "> 💡 *Winners will be posted here automatically after the test period.*\n\n"
+        summary += "> 💡 *Winners will be posted here automatically after the testing period.*\n\n"
 
+        # 3. Create Polls via Google Apps Script
         for titles, label, icon in [(video_titles, "Long Video", "🎬"), (shorts_titles, "Shorts", "📱")]:
             if not titles:
+                print(f"Notice: No titles found for {label}")
                 continue
 
             print(f"Sending {len(titles)} titles for {label} to Google...")
@@ -99,7 +92,7 @@ def main():
             try:
                 res_data = response.json()
             except Exception:
-                print(f"❌ Google Error (HTML returned instead of JSON). Check Apps Script Deployment.")
+                print(f"❌ Google Error: HTML returned instead of JSON.")
                 summary += f"⚠️ **{label}**: Connection error.\n\n"
                 continue
 
@@ -107,12 +100,15 @@ def main():
                 summary += f"⚠️ **{label}**: {res_data['error']}\n\n"
             else:
                 form_url = res_data.get('url')
+                form_id = res_data.get('formId') # The Internal API ID
+                
                 summary += f"{icon} **{label} Poll**: [Vote Here]({form_url})\n"
                 summary += f"📈 **Results**: [View Data](https://docs.google.com/spreadsheets/d/{res_data.get('sheetId', 'manual')})\n\n"
                 
-                f_id = extract_form_id(form_url)
-                trigger_tally_workflow(f_id, label)
+                # 4. Trigger the Fetch/Tally script using the INTERNAL ID
+                trigger_tally_workflow(form_id, label)
 
+        # 5. Save summary for GitHub Comment
         with open("poll_summary.md", "w", encoding="utf-8") as f:
             f.write(summary)
         print("--- Process Complete: poll_summary.md generated ---")
