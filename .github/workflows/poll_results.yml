@@ -24,7 +24,7 @@ jobs:
 
       - name: Fetch Winners
         env:
-          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_CREDENTIALS }}
           # These come from the payload sent by your poll script
           FORM_ID: ${{ github.event.client_payload.form_id }}
           POLL_TYPE: ${{ github.event.client_payload.poll_type }}
