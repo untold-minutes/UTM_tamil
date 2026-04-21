@@ -1,4 +1,3 @@
-
 name: Weekly Poll Automation
 
 on:
@@ -11,12 +10,11 @@ jobs:
     if: github.event.comment.body == '/poll' && github.event.issue.pull_request
     runs-on: ubuntu-latest
     
-    # Permissions required to read the CSV and create the Discussion Poll
     permissions:
       contents: read
       discussions: write
-      pull-requests: read
-      issues: read
+      pull-requests: write # Changed to write to allow posting comments
+      issues: write        # Changed to write to allow posting comments
 
     steps:
       - name: Checkout Repository
@@ -28,7 +26,9 @@ jobs:
           python-version: '3.x'
 
       - name: Install Dependencies
-        run: pip install pandas requests
+        # Added the Google libraries here
+        run: |
+          pip install pandas google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       - name: Run Poll Script
         env:
@@ -36,5 +36,11 @@ jobs:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
-        # This points to the location of your python script
         run: python .github/scripts/generate_poll.py
+
+      - name: Post Links to Pull Request
+        uses: peter-evans/create-or-update-comment@v4
+        if: success() # Only posts if the script finished successfully
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          body-path: 'poll_summary.md'
