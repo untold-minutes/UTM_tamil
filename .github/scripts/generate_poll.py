@@ -5,10 +5,15 @@ import pandas as pd
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+# --- CONFIGURATION ---
+# Your UTM_Content_Planning Folder ID
+FOLDER_ID = "1tYV8MOD4AiCdWIMG_m_DwYjlxcEHOzBZ" 
+
 def get_services():
+    """Authenticates and returns the Google Cloud services."""
     creds_json = os.getenv("GOOGLE_CREDENTIALS")
     if not creds_json:
-        raise ValueError("GOOGLE_CREDENTIALS secret is missing!")
+        raise ValueError("GOOGLE_CREDENTIALS secret is missing from GitHub Secrets!")
     
     creds_info = json.loads(creds_json)
     scopes = [
@@ -20,26 +25,42 @@ def get_services():
     
     return (
         build('forms', 'v1', credentials=creds),
-        build('spreadsheets', 'v4', credentials=creds)
+        build('spreadsheets', 'v4', credentials=creds),
+        build('drive', 'v3', credentials=creds)
     )
 
-def create_poll(f_service, s_service, title, options, type_label):
-    # 1. Create the Google Sheet
+def move_to_folder(d_service, file_id, folder_id):
+    """Moves the created file from the service account root to your folder."""
+    file = d_service.files().get(fileId=file_id, fields='parents').execute()
+    previous_parents = ",".join(file.get('parents'))
+    d_service.files().update(
+        fileId=file_id,
+        addParents=folder_id,
+        removeParents=previous_parents,
+        fields='id, parents'
+    ).execute()
+
+def create_poll(f_service, s_service, d_service, title, options, type_label):
+    """Creates a linked Sheet and Form, then moves them to the specified folder."""
+    
+    # 1. Create a New Google Sheet for results
     sheet_body = {'properties': {'title': f"Results - {type_label} - {title}"}}
     sheet = s_service.spreadsheets().create(body=sheet_body, fields='spreadsheetId').execute()
     sheet_id = sheet.get('spreadsheetId')
+    move_to_folder(d_service, sheet_id, FOLDER_ID)
 
     # 2. Create the Google Form
     form_body = {"info": {"title": f"UTM Tamil: {type_label} Selection"}}
     form = f_service.forms().create(body=form_body).execute()
     form_id = form['formId']
+    move_to_folder(d_service, form_id, FOLDER_ID)
 
-    # 3. Add Checkbox Question
+    # 3. Add the Checkbox Question (Multi-select)
     update = {
         "requests": [{
             "createItem": {
                 "item": {
-                    "title": f"Which {type_label} stories should we create next?",
+                    "title": f"Which {type_label} stories should we create next? (Select all you like)",
                     "questionItem": {
                         "question": {
                             "required": True,
@@ -59,37 +80,46 @@ def create_poll(f_service, s_service, title, options, type_label):
     return form['responderUri'], sheet_id
 
 def main():
-    f_service, s_service = get_services()
+    try:
+        f_service, s_service, d_service = get_services()
 
-    path = "src/01_Planning/*.csv"
-    files = glob.glob(path)
-    if not files:
-        return
-    
-    latest_file = max(files, key=os.path.getmtime)
-    file_name = os.path.basename(latest_file)
+        # Identify the latest CSV in Planning folder
+        path = "src/01_Planning/*.csv"
+        files = glob.glob(path)
+        if not files:
+            print("No CSV files found in src/01_Planning/")
+            return
+        
+        latest_file = max(files, key=os.path.getmtime)
+        file_name = os.path.basename(latest_file)
 
-    df = pd.read_csv(latest_file)
-    df.columns = df.columns.str.strip().str.upper()
+        # Load and filter data
+        df = pd.read_csv(latest_file)
+        df.columns = df.columns.str.strip().str.upper()
 
-    video_titles = df[df['TYPE'].str.strip().upper() == 'V']['TITLE'].dropna().unique().tolist()
-    shorts_titles = df[df['TYPE'].str.strip().upper() == 'S']['TITLE'].dropna().unique().tolist()
+        video_titles = df[df['TYPE'].str.strip().upper() == 'V']['TITLE'].dropna().unique().tolist()
+        shorts_titles = df[df['TYPE'].str.strip().upper() == 'S']['TITLE'].dropna().unique().tolist()
 
-    summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
+        summary = f"### 📊 New Content Polls for `{file_name}`\n\n"
 
-    if video_titles:
-        v_url, v_sheet = create_poll(f_service, s_service, file_name, video_titles, "Long Video")
-        summary += f"🎬 **Long Video Poll:** [Vote Here]({v_url})\n"
-        summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{v_sheet})\n\n"
+        if video_titles:
+            v_url, v_sheet = create_poll(f_service, s_service, d_service, file_name, video_titles, "Long Video")
+            summary += f"🎬 **Long Video Poll:** [Vote Here]({v_url})\n"
+            summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{v_sheet})\n\n"
 
-    if shorts_titles:
-        s_url, s_sheet = create_poll(f_service, s_service, file_name, shorts_titles, "Shorts")
-        summary += f"📱 **Shorts Poll:** [Vote Here]({s_url})\n"
-        summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{s_sheet})\n\n"
+        if shorts_titles:
+            s_url, s_sheet = create_poll(f_service, s_service, d_service, file_name, shorts_titles, "Shorts")
+            summary += f"📱 **Shorts Poll:** [Vote Here]({s_url})\n"
+            summary += f"📈 **Results Sheet:** [View Data](https://docs.google.com/spreadsheets/d/{s_sheet})\n\n"
 
-    # Save to a file so GitHub Action can read it
-    with open("poll_summary.md", "w", encoding="utf-8") as f:
-        f.write(summary)
+        # Create the summary file for the GitHub Action to post as a comment
+        with open("poll_summary.md", "w", encoding="utf-8") as f:
+            f.write(summary)
+            
+    except Exception as e:
+        with open("poll_summary.md", "w", encoding="utf-8") as f:
+            f.write(f"❌ **Error generating polls:** {str(e)}")
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
