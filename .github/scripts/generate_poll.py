@@ -6,7 +6,7 @@ import json
 import re
 
 # ENSURE THIS IS YOUR LATEST URL
-WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxRKjzgG1AhkE2bcPNwyhFezT9ByeU3MBSUCiIyyLVjR4D1IiYa45sdnN3fQgkNqCM2aQ/exec"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxYBHdnsIKVvdK1FJLMMsQdRiMA4qitvag4pZj6d9Z6NH18FDDCPnezGhQSQGbSRjej/exec"
 
 def extract_form_id(url):
     """Extracts the unique ID from a Google Form URL."""
