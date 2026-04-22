@@ -37,14 +37,8 @@ jobs:
         run: |
           # 1. Install dependencies explicitly in this step
           pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
-          
-          # 2. Check if the script even has valid syntax
           python -m py_compile .github/scripts/fetch_winners.py || echo "❌ SYNTAX ERROR DETECTED"
-
-          # 3. Run with full trace
           python -u .github/scripts/fetch_winners.py
-          
-          # 4. Debug check
           echo "Listing root files:"
           ls -la
 
