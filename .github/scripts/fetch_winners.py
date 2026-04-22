@@ -10,7 +10,7 @@ try:
 except Exception as e:
     IMPORT_ERROR = str(e)
 
-def fetch_and_rank():
+def main():
     # Force immediate output
     print("DEBUG: Script initialized", flush=True)
     
@@ -77,4 +77,4 @@ def fetch_and_rank():
         sys.exit(1)
 
 if __name__ == "__main__":
-    fetch_and_rank()
+    main()
