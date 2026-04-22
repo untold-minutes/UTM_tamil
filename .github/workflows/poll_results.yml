@@ -35,7 +35,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          python .github/scripts/fetch_winners.py
+          python -u .github/scripts/fetch_winners.py
           echo "Current Directory: $(pwd)"
           echo "Directory Content:"
           ls -la
