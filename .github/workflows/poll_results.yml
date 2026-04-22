@@ -47,5 +47,4 @@ jobs:
         with:
           commit_message: "🤖 Update latest winners JSON [skip ci]"
           file_pattern: 'latest_winners.json'
-          token: ${{ secrets.PAT_TOKEN }}
           branch: develop
