@@ -35,9 +35,6 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          # 1. Install dependencies explicitly in this step
-          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
-          python -m py_compile .github/scripts/fetch_winners.py || echo "❌ SYNTAX ERROR DETECTED"
           python -u .github/scripts/fetch_winners.py
           echo "Listing root files:"
           ls -la
