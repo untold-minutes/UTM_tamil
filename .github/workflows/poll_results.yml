@@ -28,10 +28,10 @@ jobs:
           # These come from the payload sent by your poll script
           FORM_ID: ${{ github.event.client_payload.form_id }}
           POLL_TYPE: ${{ github.event.client_payload.poll_type }}
-        run: python .github/scripts/fetch_winners.py > results.md
+        run: python .github/scripts/fetch_winners.py
 
       - name: Post Winners to GitHub
         uses: peter-evans/create-or-update-comment@v3
         with:
           issue-number: ${{ github.event.client_payload.issue_number }}
-          body-path: results.md
+          body-path: winner_summary.md
