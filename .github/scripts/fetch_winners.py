@@ -4,15 +4,14 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
 def fetch_and_rank():
-    # 1. Initialize variables so they exist even if the API fetch fails
     winners_list = []
     output = "## 📊 Poll Results\n"
     
-    # Force the file to be created in the root of the GitHub workspace
-    # GitHub Actions sets GITHUB_WORKSPACE to the root of the repo
-    workspace = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
-    json_path = os.path.join(workspace, "latest_winners.json")
-    md_path = os.path.join(workspace, "winner_summary.md")
+    # FORCE PATHS: Define paths relative to the REPO ROOT
+    # In GitHub Actions, the root is always GITHUB_WORKSPACE
+    root_dir = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
+    json_path = os.path.join(root_dir, "latest_winners.json")
+    md_path = os.path.join(root_dir, "winner_summary.md")
 
     try:
         # Get Env Vars
@@ -43,6 +42,7 @@ def fetch_and_rank():
             for resp in responses:
                 answer_values = list(resp['answers'].values())
                 if answer_values:
+                    # Capture Multiple Choices (Checkbox)
                     choices = answer_values[0]['textAnswers']['answers']
                     for c in choices:
                         val = c['value']
@@ -65,8 +65,9 @@ def fetch_and_rank():
         print(f"❌ Python Error: {str(e)}")
         output += f"\n### ❌ Error during tally:\n`{str(e)}`"
 
-    # 2. THE SAVE PHASE (Guaranteed to run)
-    print(f"📂 Attempting to save files to: {workspace}")
+    # --- THE SAVE PHASE (Guaranteed to run) ---
+    print(f"📂 Saving JSON to: {json_path}")
+    print(f"📂 Saving MD to: {md_path}")
     
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(output)
@@ -74,7 +75,7 @@ def fetch_and_rank():
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(winners_list, f, indent=4)
             
-    print(f"✅ Success: Created {os.path.basename(json_path)}")
+    print(f"✅ Success: File written to disk.")
 
 if __name__ == "__main__":
     fetch_and_rank()
