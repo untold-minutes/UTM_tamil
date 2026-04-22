@@ -2,19 +2,16 @@ import sys
 import os
 import json
 
-def log(msg):
-    print(f"DEBUG: {msg}", file=sys.stderr, flush=True)
-
 def fetch_and_rank():
-    log("Checking Environment...")
+    print("DEBUG: Checking Environment...", flush=True)
     workspace = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
     json_path = os.path.join(workspace, "latest_winners.json")
     
     try:
-        log("Importing Google Libraries...")
+        print("DEBUG: Importing Google Libraries...", flush=True)
         from googleapiclient.discovery import build
         from google.oauth2 import service_account
-        log("Imports Successful.")
+        print("DEBUG: Imports Successful.", flush=True)
 
         creds_raw = os.environ.get('GOOGLE_SERVICE_ACCOUNT')
         form_id = os.environ.get('FORM_ID')
@@ -23,7 +20,7 @@ def fetch_and_rank():
         if not creds_raw:
             raise ValueError("GOOGLE_SERVICE_ACCOUNT is empty.")
 
-        log(f"Processing Form: {form_id}")
+        print(f"DEBUG: Processing Form: {form_id}", flush=True)
         creds_dict = json.loads(creds_raw)
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=['https://www.googleapis.com/auth/forms.responses.readonly']
@@ -53,13 +50,13 @@ def fetch_and_rank():
                 winners_list.append({"type": type_code, "title": str(title), "rank": i})
 
         # ATOMIC WRITE
-        log(f"Writing JSON to {json_path}")
+        print(f"DEBUG: Writing JSON to {json_path}", flush=True)
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(winners_list, f, indent=4, ensure_ascii=False)
-        log("✅ JSON Success.")
+        print("DEBUG: ✅ JSON Success.", flush=True)
 
     except Exception as e:
-        log(f"❌ CRITICAL ERROR: {str(e)}")
+        print(f"DEBUG: ❌ CRITICAL ERROR: {str(e)}", flush=True)
         # Create an empty list file so the next step doesn't fail
         with open(json_path, "w") as f:
             f.write("[]")
