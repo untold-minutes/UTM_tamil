@@ -4,17 +4,17 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
 def fetch_and_rank():
-    # 1. Initialize data early so it's available for the final save step
+    # 1. Initialize variables early so they exist for the final save step
     winners_list = []
     output = ""
-    poll_type = os.environ.get('POLL_TYPE', 'Unknown')
+    poll_type = os.environ.get('POLL_TYPE', 'Shorts')
     form_id = os.environ.get('FORM_ID')
     
     try:
         # Setup Credentials
         creds_raw = os.environ.get('GOOGLE_SERVICE_ACCOUNT')
-        if not creds_raw:
-            print("❌ Missing GOOGLE_SERVICE_ACCOUNT")
+        if not creds_raw or not form_id:
+            print("❌ Missing GOOGLE_SERVICE_ACCOUNT or FORM_ID")
             return
 
         creds_dict = json.loads(creds_raw)
@@ -28,7 +28,6 @@ def fetch_and_rank():
         responses = result.get('responses', [])
         
         output = f"## 🏆 Winners for {poll_type}\n"
-        # Determine prefix: V for Long Videos, S for Shorts
         type_code = "V" if "Long" in poll_type else "S"
         
         if not responses:
@@ -48,7 +47,7 @@ def fetch_and_rank():
             
             for i, (title, count) in enumerate(sorted_votes[:limit], 1):
                 output += f"{i}. **{title}** — ({count} votes) ✅\n"
-                # Store data for the merge script
+                # Store winner for the JSON file
                 winners_list.append({
                     "type": type_code,
                     "title": title,
@@ -62,16 +61,15 @@ def fetch_and_rank():
         print(error_msg)
         output = f"## ❌ Tally Failed\n{error_msg}"
 
-    # 3. SAVE PHASE: These lines MUST run every time
-    # Save the Markdown summary for the GitHub Comment
+    # 3. SAVE PHASE: This must be OUTSIDE the try/except blocks
+    # This ensures latest_winners.json is ALWAYS created
     with open("winner_summary.md", "w", encoding="utf-8") as f:
-        f.write(output if output else "No results generated.")
+        f.write(output)
     
-    # Save the JSON file for the Merge Script (the missing link)
     with open("latest_winners.json", "w", encoding="utf-8") as f:
         json.dump(winners_list, f, indent=4)
         
-    print(f"✅ Successfully created latest_winners.json with {len(winners_list)} entries.")
+    print(f"✅ Created latest_winners.json with {len(winners_list)} items.")
 
 if __name__ == "__main__":
     fetch_and_rank()
