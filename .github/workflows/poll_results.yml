@@ -33,9 +33,13 @@ jobs:
           FORM_ID: ${{ github.event.client_payload.form_id }}
           POLL_TYPE: ${{ github.event.client_payload.poll_type }}
           ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           python .github/scripts/fetch_winners.py
-          echo "Checking for files..."
+          echo "Current Directory: $(pwd)"
+          echo "Directory Content:"
+          ls -la
+          echo "Checking specifically for JSON..."
           ls -l latest_winners.json || echo "❌ FILE NOT FOUND!"
 
       - name: Post Winners to GitHub
