@@ -38,7 +38,7 @@ jobs:
       - name: Post Winners to GitHub
         uses: peter-evans/create-or-update-comment@v4
         with:
-          token: ${{ secrets.MY_PAT_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
           issue-number: ${{ github.event.client_payload.issue_number }}
           body-path: winner_summary.md
 
