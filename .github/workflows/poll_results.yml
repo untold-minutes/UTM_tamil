@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          ref: develop
 
       - name: Wait for 24 Hours
         # 86400 seconds = 24 hours
