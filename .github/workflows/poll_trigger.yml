@@ -46,6 +46,6 @@ jobs:
         uses: peter-evans/create-or-update-comment@v4
         if: success()
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
           issue-number: ${{ github.event.issue.number }}
           body-path: 'poll_summary.md'
