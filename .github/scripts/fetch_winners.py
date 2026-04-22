@@ -1,5 +1,6 @@
 import os
 import json
+import traceback
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
@@ -7,17 +8,16 @@ def fetch_and_rank():
     winners_list = []
     output = "## 📊 Poll Results\n"
     
+    # Use explicit workspace path
     workspace = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
     json_path = os.path.join(workspace, "latest_winners.json")
     md_path = os.path.join(workspace, "winner_summary.md")
 
     try:
+        print("--- DEBUG: Starting Fetch ---")
         creds_raw = os.environ.get('GOOGLE_SERVICE_ACCOUNT')
         form_id = os.environ.get('FORM_ID')
         poll_type = os.environ.get('POLL_TYPE', 'Shorts')
-
-        if not creds_raw or not form_id:
-            raise ValueError("Credentials or Form ID missing.")
 
         creds_dict = json.loads(creds_raw)
         creds = service_account.Credentials.from_service_account_info(
@@ -35,7 +35,6 @@ def fetch_and_rank():
         else:
             votes = {}
             for resp in responses:
-                # Use .get() to avoid KeyErrors if 'answers' is missing
                 answers = resp.get('answers', {})
                 for ans_id, content in answers.items():
                     text_answers = content.get('textAnswers', {}).get('answers', [])
@@ -49,24 +48,36 @@ def fetch_and_rank():
             
             for i, (title, count) in enumerate(sorted_votes[:limit], 1):
                 output += f"{i}. **{title}** — ({count} votes) ✅\n"
-                winners_list.append({"type": type_code, "title": title, "rank": i})
+                winners_list.append({"type": type_code, "title": str(title), "rank": i})
         
         output += "\n---\n*Tally success.*"
 
     except Exception as e:
-        print(f"❌ SCRIPT ERROR: {str(e)}")
-        output += f"\n\nError details: {str(e)}"
+        print("--- DEBUG: SCRIPT CRASHED ---")
+        print(traceback.format_exc())
+        output += f"\n\n❌ ERROR: {str(e)}"
 
-    # --- THE FIX: WRITE BOTH AT ONCE ---
-    print(f"💾 Writing {len(winners_list)} winners to {json_path}")
-    
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(winners_list, f, indent=4)
-        
-    with open(md_path, "w", encoding="utf-8") as f:
-        f.write(output)
-            
-    print("✅ Files written successfully.")
+    # --- THE SAVE PHASE: ATOMIC ATTEMPT ---
+    print(f"--- DEBUG: Attempting to write JSON to {json_path} ---")
+    try:
+        json_data = json.dumps(winners_list, indent=4, ensure_ascii=False)
+        with open(json_path, "w", encoding="utf-8") as f:
+            f.write(json_data)
+            f.flush()
+            os.fsync(f.fileno()) # Force write to disk
+        print("✅ JSON file write completed.")
+    except Exception as je:
+        print(f"❌ JSON WRITE FAILED: {str(je)}")
+
+    print(f"--- DEBUG: Attempting to write MD to {md_path} ---")
+    try:
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(output)
+            f.flush()
+            os.fsync(f.fileno())
+        print("✅ MD file write completed.")
+    except Exception as me:
+        print(f"❌ MD WRITE FAILED: {str(me)}")
 
 if __name__ == "__main__":
     fetch_and_rank()
