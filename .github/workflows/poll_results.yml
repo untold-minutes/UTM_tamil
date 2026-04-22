@@ -35,20 +35,18 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
+          # 1. Install dependencies explicitly in this step
+          pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          
+          # 2. Check if the script even has valid syntax
+          python -m py_compile .github/scripts/fetch_winners.py || echo "❌ SYNTAX ERROR DETECTED"
+
+          # 3. Run with full trace
           python -u .github/scripts/fetch_winners.py
-          # Force the shell to wait and clear any stat cache
-          sleep 2
           
-          echo "Listing all files in root:"
-          ls -R . | grep ".json" || echo "No JSON files found in entire tree"
-          
-          echo "Checking for the specific file:"
-          if [ -f "latest_winners.json" ]; then
-            echo "✅ latest_winners.json FOUND!"
-          else
-            echo "❌ latest_winners.json STILL MISSING!"
-            exit 1
-          fi
+          # 4. Debug check
+          echo "Listing root files:"
+          ls -la
 
       - name: Post Winners to GitHub
         uses: peter-evans/create-or-update-comment@v4
