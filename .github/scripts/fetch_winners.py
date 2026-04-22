@@ -4,34 +4,40 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
 def fetch_and_rank():
-    # 1. Initialize variables early so they exist for the final save step
+    # 1. Initialize variables so they exist even if the API fetch fails
     winners_list = []
-    output = ""
-    poll_type = os.environ.get('POLL_TYPE', 'Shorts')
-    form_id = os.environ.get('FORM_ID')
+    output = "## 📊 Poll Results\n"
     
-    try:
-        # Setup Credentials
-        creds_raw = os.environ.get('GOOGLE_SERVICE_ACCOUNT')
-        if not creds_raw or not form_id:
-            print("❌ Missing GOOGLE_SERVICE_ACCOUNT or FORM_ID")
-            return
+    # Force the file to be created in the root of the GitHub workspace
+    # GitHub Actions sets GITHUB_WORKSPACE to the root of the repo
+    workspace = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
+    json_path = os.path.join(workspace, "latest_winners.json")
+    md_path = os.path.join(workspace, "winner_summary.md")
 
+    try:
+        # Get Env Vars
+        creds_raw = os.environ.get('GOOGLE_SERVICE_ACCOUNT')
+        form_id = os.environ.get('FORM_ID')
+        poll_type = os.environ.get('POLL_TYPE', 'Shorts')
+
+        if not creds_raw or not form_id:
+            raise ValueError("Credentials or Form ID missing in environment.")
+
+        # Setup Google Service
         creds_dict = json.loads(creds_raw)
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=['https://www.googleapis.com/auth/forms.responses.readonly']
         )
         service = build('forms', 'v1', credentials=creds)
 
-        # 2. Fetch responses from Google Forms
+        # Fetch responses
         result = service.forms().responses().list(formId=form_id).execute()
         responses = result.get('responses', [])
         
-        output = f"## 🏆 Winners for {poll_type}\n"
         type_code = "V" if "Long" in poll_type else "S"
         
         if not responses:
-            output += "No votes were cast during the testing period."
+            output += "⚠️ No votes were found for this poll yet."
         else:
             votes = {}
             for resp in responses:
@@ -47,29 +53,28 @@ def fetch_and_rank():
             
             for i, (title, count) in enumerate(sorted_votes[:limit], 1):
                 output += f"{i}. **{title}** — ({count} votes) ✅\n"
-                # Store winner for the JSON file
                 winners_list.append({
                     "type": type_code,
                     "title": title,
                     "rank": i
                 })
-
-        output += "\n---\n*Results generated automatically.*"
+        
+        output += "\n---\n*Tally completed successfully.*"
 
     except Exception as e:
-        error_msg = f"❌ Error: {str(e)}"
-        print(error_msg)
-        output = f"## ❌ Tally Failed\n{error_msg}"
+        print(f"❌ Python Error: {str(e)}")
+        output += f"\n### ❌ Error during tally:\n`{str(e)}`"
 
-    # 3. SAVE PHASE: This must be OUTSIDE the try/except blocks
-    # This ensures latest_winners.json is ALWAYS created
-    with open("winner_summary.md", "w", encoding="utf-8") as f:
-        f.write(output)
+    # 2. THE SAVE PHASE (Guaranteed to run)
+    print(f"📂 Attempting to save files to: {workspace}")
     
-    with open("latest_winners.json", "w", encoding="utf-8") as f:
-        json.dump(winners_list, f, indent=4)
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(output)
         
-    print(f"✅ Created latest_winners.json with {len(winners_list)} items.")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(winners_list, f, indent=4)
+            
+    print(f"✅ Success: Created {os.path.basename(json_path)}")
 
 if __name__ == "__main__":
     fetch_and_rank()
