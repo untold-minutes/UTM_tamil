@@ -33,7 +33,10 @@ jobs:
           FORM_ID: ${{ github.event.client_payload.form_id }}
           POLL_TYPE: ${{ github.event.client_payload.poll_type }}
           ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
-        run: python .github/scripts/fetch_winners.py
+        run: |
+          python .github/scripts/fetch_winners.py
+          echo "Checking for files..."
+          ls -l latest_winners.json || echo "❌ FILE NOT FOUND!"
 
       - name: Post Winners to GitHub
         uses: peter-evans/create-or-update-comment@v4
