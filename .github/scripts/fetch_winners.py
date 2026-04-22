@@ -1,18 +1,31 @@
+import sys
 import os
 import json
-import sys
+
+# 1. IMMEDIATE LOGGING TO STDERR
+def log(msg):
+    print(f"DEBUG: {msg}", file=sys.stderr, flush=True)
+
+log("Script execution started")
 
 def fetch_and_rank():
-    # 1. SETUP PATHS
     workspace = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
     json_path = os.path.join(workspace, "latest_winners.json")
     md_path = os.path.join(workspace, "winner_summary.md")
     
+    log(f"Workspace: {workspace}")
+    
+    # 2. CREATE DUMMY JSON IMMEDIATELY
+    # This proves the script has write access to the root
+    try:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump([{"status": "initializing"}], f)
+        log("✅ Dummy JSON created successfully")
+    except Exception as e:
+        log(f"❌ Failed to create Dummy JSON: {e}")
+
     winners_list = []
     output = "## 📊 Poll Results\n"
-
-    # Force immediate output to GitHub Logs
-    print("🚀 SCRIPT STARTING", flush=True)
 
     try:
         from googleapiclient.discovery import build
@@ -23,11 +36,10 @@ def fetch_and_rank():
         poll_type = os.environ.get('POLL_TYPE', 'Shorts')
 
         if not creds_raw:
-            print("❌ ERROR: GOOGLE_SERVICE_ACCOUNT is empty", flush=True)
+            log("❌ GOOGLE_SERVICE_ACCOUNT is missing")
             return
 
-        # 2. GOOGLE API LOGIC
-        print(f"📡 Connecting to Form: {form_id}", flush=True)
+        log("Attempting Google API Connection")
         creds_dict = json.loads(creds_raw)
         creds = service_account.Credentials.from_service_account_info(
             creds_dict, scopes=['https://www.googleapis.com/auth/forms.responses.readonly']
@@ -39,8 +51,7 @@ def fetch_and_rank():
         type_code = "V" if "Long" in poll_type else "S"
         
         if not responses:
-            print("⚠️ No responses found in Form.", flush=True)
-            output += "⚠️ No votes found in the form."
+            output += "No votes found."
         else:
             votes = {}
             for resp in responses:
@@ -49,48 +60,34 @@ def fetch_and_rank():
                     text_list = content.get('textAnswers', {}).get('answers', [])
                     for t in text_list:
                         val = t.get('value')
-                        if val:
-                            votes[str(val)] = votes.get(str(val), 0) + 1
+                        if val: votes[str(val)] = votes.get(str(val), 0) + 1
 
             sorted_votes = sorted(votes.items(), key=lambda x: x[1], reverse=True)
             limit = 2 if type_code == "V" else 5
             
             for i, (title, count) in enumerate(sorted_votes[:limit], 1):
                 output += f"{i}. **{title}** — ({count} votes) ✅\n"
-                winners_list.append({
-                    "type": str(type_code),
-                    "title": str(title),
-                    "rank": int(i)
-                })
+                winners_list.append({"type": type_code, "title": str(title), "rank": i})
         
         output += "\n---\nTally successful."
-        print(f"✅ Tally complete. Found {len(winners_list)} winners.", flush=True)
+        log(f"Tally complete: {len(winners_list)} winners found")
 
     except Exception as e:
-        print(f"❌ CRITICAL ERROR: {str(e)}", flush=True)
+        log(f"❌ CRITICAL ERROR: {str(e)}")
         output += f"\n\n❌ ERROR: {str(e)}"
 
-    # 3. THE SAVE PHASE
-    # We write the JSON file first.
-    print(f"💾 Attempting to write JSON to: {json_path}", flush=True)
+    # 3. FINAL OVERWRITE
     try:
+        log("Writing final JSON...")
         with open(json_path, "w", encoding="utf-8") as f:
-            # We use a very safe dump configuration for international characters
-            json_string = json.dumps(winners_list, indent=4, ensure_ascii=False)
-            f.write(json_string)
-        print("🎉 JSON WRITE SUCCESSFUL", flush=True)
-    except Exception as je:
-        print(f"❌ JSON WRITE FAILED: {str(je)}", flush=True)
-
-    print(f"💾 Attempting to write MD to: {md_path}", flush=True)
-    try:
+            json.dump(winners_list, f, indent=4, ensure_ascii=False)
+        
+        log("Writing final MD...")
         with open(md_path, "w", encoding="utf-8") as f:
             f.write(output)
-        print("🎉 MD WRITE SUCCESSFUL", flush=True)
-    except Exception as me:
-        print(f"❌ MD WRITE FAILED: {str(me)}", flush=True)
-
-    print("🏁 SCRIPT REACHED END", flush=True)
+        log("✅ All files written")
+    except Exception as e:
+        log(f"❌ Final write failed: {e}")
 
 if __name__ == "__main__":
     fetch_and_rank()
