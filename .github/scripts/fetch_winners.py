@@ -6,6 +6,7 @@ from google.oauth2 import service_account
 def fetch_and_rank():
     # 1. Setup Credentials
     creds_json = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT'])
+    creds_raw = os.environ.get('GOOGLE_SERVICE_ACCOUNT')
     if not creds_raw: return
 
     creds_dict = json.loads(creds_raw)
