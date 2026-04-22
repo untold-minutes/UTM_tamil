@@ -36,11 +36,19 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           python -u .github/scripts/fetch_winners.py
-          echo "Current Directory: $(pwd)"
-          echo "Directory Content:"
-          ls -la
-          echo "Checking specifically for JSON..."
-          ls -l latest_winners.json || echo "❌ FILE NOT FOUND!"
+          # Force the shell to wait and clear any stat cache
+          sleep 2
+          
+          echo "Listing all files in root:"
+          ls -R . | grep ".json" || echo "No JSON files found in entire tree"
+          
+          echo "Checking for the specific file:"
+          if [ -f "latest_winners.json" ]; then
+            echo "✅ latest_winners.json FOUND!"
+          else
+            echo "❌ latest_winners.json STILL MISSING!"
+            exit 1
+          fi
 
       - name: Post Winners to GitHub
         uses: peter-evans/create-or-update-comment@v4
