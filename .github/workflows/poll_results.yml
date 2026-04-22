@@ -34,10 +34,10 @@ jobs:
           POLL_TYPE: ${{ github.event.client_payload.poll_type }}
           ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
-        run: |
-          python -u .github/scripts/fetch_winners.py
-          echo "Listing root files:"
-          ls -la
+        run: python .github/scripts/fetch_winners.py
+        
+      - name: check file
+        run: ls -la
 
       - name: Post Winners to GitHub
         uses: peter-evans/create-or-update-comment@v4
