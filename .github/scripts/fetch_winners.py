@@ -12,7 +12,7 @@ except Exception as e:
 
 def main():
     # Force immediate output
-    print("DEBUG: Script initialized", flush=True)
+    print("DEBUG: Script initialized")
     
     if IMPORT_ERROR:
         print(f"DEBUG: ❌ IMPORT ERROR: {IMPORT_ERROR}", flush=True)
@@ -30,7 +30,7 @@ def main():
         poll_type = os.environ.get('POLL_TYPE', 'Shorts')
 
         if not creds_raw:
-            print("DEBUG: ❌ GOOGLE_SERVICE_ACCOUNT is missing!", flush=True)
+            print("DEBUG: ❌ GOOGLE_SERVICE_ACCOUNT is missing!")
             return
 
         print(f"DEBUG: Authenticating for Form ID: {form_id}", flush=True)
@@ -40,7 +40,7 @@ def main():
         )
         service = build('forms', 'v1', credentials=creds)
 
-        print("DEBUG: Fetching responses...", flush=True)
+        print("DEBUG: Fetching responses...")
         result = service.forms().responses().list(formId=form_id).execute()
         responses = result.get('responses', [])
         
@@ -65,13 +65,13 @@ def main():
             for i, (title, count) in enumerate(sorted_votes[:limit], 1):
                 winners_list.append({"type": type_code, "title": str(title), "rank": i})
 
-        print(f"DEBUG: Writing JSON to {json_path}", flush=True)
+        print(f"DEBUG: Writing JSON to {json_path}")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(winners_list, f, indent=4, ensure_ascii=False)
-        print("DEBUG: ✅ JSON Success.", flush=True)
+        print("DEBUG: ✅ JSON Success.")
 
     except Exception as e:
-        print(f"DEBUG: ❌ CRITICAL ERROR: {str(e)}", flush=True)
+        print(f"DEBUG: ❌ CRITICAL ERROR: {str(e)}")
         with open(json_path, "w") as f:
             f.write("[]")
         sys.exit(1)
