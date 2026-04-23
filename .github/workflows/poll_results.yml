@@ -49,6 +49,11 @@ jobs:
       - name: Save Winner Data to Repo
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_CREDENTIALS }}
+          FORM_ID: ${{ github.event.client_payload.form_id }}
+          POLL_TYPE: ${{ github.event.client_payload.poll_type }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
