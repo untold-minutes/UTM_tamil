@@ -1,0 +1,43 @@
+name: 📂 Create Winner Folders on Merge
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [closed]
+
+jobs:
+  create-winner-files:
+    # CRITICAL: This ensures it only runs when you MERGE, not just close the PR
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # We check out 'main' because the code has just been merged there
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install pandas
+
+      - name: Generate Winner Files
+        # This calls the finalize_content.py script we created earlier
+        run: python .github/scripts/finalize_content.py
+
+      - name: Commit and Push New Folders
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🤖 Auto-setup content folders for winner titles"
+          # This pushes the new .vid files and the new WK folder back to main
+          branch: main
+          file_pattern: 'src/02_Content/**'

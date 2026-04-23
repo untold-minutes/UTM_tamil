@@ -8,21 +8,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       issues: write
-      contents: read
+      contents: write # Needed to push the JSON file
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           ref: develop
+          token: ${{ secrets.PAT_TOKEN }} # Use PAT to allow triggering other actions
 
-      - name: Wait for 24 Hours
-        # 86400 seconds = 24 hours
-        run: sleep 120
+      - name: Wait for Poll Results
+        run: sleep 30
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install Dependencies
         run: pip install google-auth google-api-python-client requests
@@ -30,14 +30,25 @@ jobs:
       - name: Fetch Winners
         env:
           GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_CREDENTIALS }}
-          # These come from the payload sent by your poll script
           FORM_ID: ${{ github.event.client_payload.form_id }}
           POLL_TYPE: ${{ github.event.client_payload.poll_type }}
+          ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: python .github/scripts/fetch_winners.py
+        
+      - name: check file
+        run: ls -la
 
       - name: Post Winners to GitHub
-        uses: peter-evans/create-or-update-comment@v3
+        uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.PAT_TOKEN }}
           issue-number: ${{ github.event.client_payload.issue_number }}
           body-path: winner_summary.md
+
+      - name: Save Winner Data to Repo
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🤖 Update latest winners JSON [skip ci]"
+          file_pattern: 'latest_winners.json'
+          branch: develop
