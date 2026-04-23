@@ -36,6 +36,9 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: python .github/scripts/fetch_winners.py
         
+      - name: Pull latest changes
+        run: git pull --rebase origin develop
+
       - name: check file
         run: ls -la
 
