@@ -21,8 +21,13 @@ def main():
         return
         
     latest_file = max(files, key=os.path.getmtime)
-    match = re.search(r'(WK_\d+)', os.path.basename(latest_file), re.IGNORECASE)
+    # Check for WK_# or W# format
+    match = re.search(r'([W]K?_?\d+)', os.path.basename(latest_file), re.IGNORECASE)
     week_folder = match.group(1).upper() if match else "WEEK_UNKNOWN"
+    
+    # Standardize to WK_XX format if it's just W17
+    if re.match(r'^W\d+$', week_folder):
+        week_folder = week_folder.replace("W", "WK_")
     
     base_dir = f"src/02_Content/{week_folder}"
     os.makedirs(base_dir, exist_ok=True)
