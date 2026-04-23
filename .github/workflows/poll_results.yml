@@ -47,8 +47,40 @@ jobs:
           body-path: winner_summary.md
 
       - name: Save Winner Data to Repo
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "🤖 Update latest winners JSON [skip ci]"
-          file_pattern: 'latest_winners.json'
-          branch: develop
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Retry loop to handle parallel pushes
+          for i in {1..5}; do
+            echo "Attempt $i to push latest_winners.json..."
+            
+            git fetch origin develop
+            git checkout develop
+            git reset --hard origin/develop
+            
+            # Re-run the fetch winners script to merge with potentially new remote data
+            python .github/scripts/fetch_winners.py
+            
+            git add latest_winners.json
+            
+            # Only commit if there are changes
+            if git diff --staged --quiet; then
+              echo "No changes to commit."
+              exit 0
+            fi
+            
+            git commit -m "🤖 Update latest winners JSON [skip ci]"
+            
+            if git push origin develop; then
+              echo "✅ Successfully pushed winners."
+              exit 0
+            else
+              echo "❌ Push failed. Retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+          echo "❌ Failed to push after 5 attempts."
+          exit 1
