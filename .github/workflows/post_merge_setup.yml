@@ -1,6 +1,9 @@
 name: 📂 Create Winner Folders on Merge
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -8,19 +11,32 @@ on:
 
 jobs:
   create-winner-files:
-    # CRITICAL: This ensures it only runs when you MERGE, not just close the PR
-    if: github.event.pull_request.merged == true
+    # Trigger on push to main OR on PR merge to main
+    if: |
+      github.event_name == 'push' || 
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          # We check out 'main' because the code has just been merged there
           ref: main
+          fetch-depth: 0
+
+      - name: check files
+        run: |
+          ls -la
+          if [ -f "latest_winners.json" ]; then
+            echo "✅ latest_winners.json found"
+            cat latest_winners.json
+          else
+            echo "❌ latest_winners.json NOT found"
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
