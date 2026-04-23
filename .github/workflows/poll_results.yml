@@ -55,3 +55,4 @@ jobs:
           commit_message: "🤖 Update latest winners JSON [skip ci]"
           file_pattern: 'latest_winners.json'
           branch: develop
+          push_options: '--force'

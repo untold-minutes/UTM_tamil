@@ -72,8 +72,24 @@ def main():
         summary_output += "\n---\n*Results generated automatically.*"
 
         print(f"DEBUG: Writing JSON to {json_path}")
+        
+        # Load existing data to avoid overwriting results from other parallel polls
+        current_data = []
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    current_data = json.load(f)
+                    if not isinstance(current_data, list):
+                        current_data = []
+            except Exception:
+                current_data = []
+
+        # Remove old entries of the SAME type to refresh with new winners
+        merged_data = [item for item in current_data if item.get("type") != type_code]
+        merged_data.extend(winners_list)
+
         with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(winners_list, f, indent=4, ensure_ascii=False)
+            json.dump(merged_data, f, indent=4, ensure_ascii=False)
             
         print(f"DEBUG: Writing Summary to {summary_path}")
         with open(summary_path, "w", encoding="utf-8") as f:
