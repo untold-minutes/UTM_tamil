@@ -21,6 +21,7 @@ def main():
 
     workspace = os.environ.get('GITHUB_WORKSPACE', os.getcwd())
     json_path = os.path.join(workspace, "latest_winners.json")
+    summary_path = os.path.join(workspace, "winner_summary.md")
     
     print(f"DEBUG: Workspace: {workspace}", flush=True)
 
@@ -45,10 +46,12 @@ def main():
         responses = result.get('responses', [])
         
         winners_list = []
+        summary_output = f"## 🏆 Winners for {poll_type}\n"
         type_code = "V" if "Long" in poll_type else "S"
         
         if not responses:
             print("DEBUG: ⚠️ No responses found.", flush=True)
+            summary_output += "No votes were cast during the testing period."
         else:
             votes = {}
             for resp in responses:
@@ -64,16 +67,26 @@ def main():
             
             for i, (title, count) in enumerate(sorted_votes[:limit], 1):
                 winners_list.append({"type": type_code, "title": str(title), "rank": i})
+                summary_output += f"{i}. **{title}** — ({count} votes) ✅\n"
+
+        summary_output += "\n---\n*Results generated automatically.*"
 
         print(f"DEBUG: Writing JSON to {json_path}")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(winners_list, f, indent=4, ensure_ascii=False)
-        print("DEBUG: ✅ JSON Success.")
+            
+        print(f"DEBUG: Writing Summary to {summary_path}")
+        with open(summary_path, "w", encoding="utf-8") as f:
+            f.write(summary_output)
+            
+        print("DEBUG: ✅ Files Success.")
 
     except Exception as e:
         print(f"DEBUG: ❌ CRITICAL ERROR: {str(e)}")
         with open(json_path, "w") as f:
             f.write("[]")
+        with open(summary_path, "w") as f:
+            f.write(f"❌ Error fetching winners: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
