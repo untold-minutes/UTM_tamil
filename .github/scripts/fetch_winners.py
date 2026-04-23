@@ -99,11 +99,18 @@ def main():
 
     except Exception as e:
         print(f"DEBUG: ❌ CRITICAL ERROR: {str(e)}")
-        with open(json_path, "w") as f:
-            f.write("[]")
-        with open(summary_path, "w") as f:
-            f.write(f"❌ Error fetching winners: {str(e)}")
-        sys.exit(1)
+        # If the file doesn't exist, create an empty list so the commit step doesn't fail
+        if not os.path.exists(json_path):
+            with open(json_path, "w") as f:
+                f.write("[]")
+        
+        # If the summary doesn't exist, create an error message
+        if not os.path.exists(summary_path):
+            with open(summary_path, "w") as f:
+                f.write(f"❌ Error fetching winners: {str(e)}\n\n*Please ensure the Service Account has permission to access the form.*")
+        
+        # Don't exit with 1, let the workflow finish so it can at least post the error comment
+        return
 
 if __name__ == "__main__":
     main()
