@@ -17,7 +17,7 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }} # Use PAT to allow triggering other actions
 
       - name: Wait for Poll Results
-        run: sleep 30
+        run: sleep 28800
 
       - name: Set up Python
         uses: actions/setup-python@v5
