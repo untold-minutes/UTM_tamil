@@ -33,15 +33,17 @@ def main():
     os.makedirs(base_dir, exist_ok=True)
 
     # 3. Create .vid files for winners
-    # Using a set to avoid duplicates if the tally ran twice
-    processed_titles = set()
+    # Using a set of (type_code, title) to allow same title for different types
+    processed_entries = set()
     
     for winner in winners:
         title = winner['title']
-        if title in processed_titles:
+        type_code = winner['type'] # 'V' or 'S'
+        
+        entry_key = (type_code, title)
+        if entry_key in processed_entries:
             continue
             
-        type_code = winner['type'] # 'V' or 'S'
         rank = winner['rank']
         clean_title = re.sub(r'[^\w\s-]', '', title).strip().replace(" ", "_")
         
@@ -55,7 +57,7 @@ def main():
             f.write(f"Rank: {rank}\n")
             
         print(f"✅ Created: {filename}")
-        processed_titles.add(title)
+        processed_entries.add(entry_key)
 
     # 4. Clean up the JSON file after successful creation so it's fresh for next week
     os.remove(winners_file)
